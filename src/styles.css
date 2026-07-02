@@ -302,6 +302,19 @@ button {
   padding: 10px 12px 4px;
   font-size: 13px;
   color: var(--wa-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.splitcard__edit {
+  border: 1px solid var(--wa-border);
+  background: #fff;
+  color: var(--wa-green-dark);
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
 }
 .splitcard__toggle {
   background: none;

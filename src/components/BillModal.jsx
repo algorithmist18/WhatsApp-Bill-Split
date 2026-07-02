@@ -8,14 +8,19 @@ import {
   parseAssignments,
 } from '../lib/voice.js';
 
-export default function BillModal({ members, onClose, onPost }) {
-  const [stage, setStage] = useState('upload'); // upload | scanning | edit
-  const [merchant, setMerchant] = useState('');
+export default function BillModal({ members, onClose, onPost, initial = null }) {
+  const isEditing = !!initial;
+  // When editing an already-posted bill, jump straight to the edit stage
+  // prefilled with its items, split mode and payer.
+  const [stage, setStage] = useState(isEditing ? 'edit' : 'upload');
+  const [merchant, setMerchant] = useState(initial?.merchant ?? '');
   const [fileName, setFileName] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
-  const [items, setItems] = useState([]);
-  const [mode, setMode] = useState('equal'); // equal | itemized
-  const [payerId, setPayerId] = useState(members[0]?.id ?? '');
+  const [items, setItems] = useState(() =>
+    initial ? initial.items.map((it) => ({ ...it, assignedTo: [...(it.assignedTo || [])] })) : []
+  );
+  const [mode, setMode] = useState(initial?.mode ?? 'equal'); // equal | itemized
+  const [payerId, setPayerId] = useState(initial?.payerId ?? members[0]?.id ?? '');
   const [progress, setProgress] = useState(0);
   const [ocrNote, setOcrNote] = useState('');
 
@@ -81,24 +86,27 @@ export default function BillModal({ members, onClose, onPost }) {
 
   function post() {
     if (items.length === 0 || total <= 0) return;
-    onPost({
-      type: 'split',
-      author: 'you',
-      merchant,
-      mode,
-      total,
-      payerId,
-      items: items.map((it) => ({ ...it })),
-      shares: { ...shares },
-      debts: debts.map((d) => ({ ...d, settled: false })),
-    });
+    onPost(
+      {
+        type: 'split',
+        author: 'you',
+        merchant,
+        mode,
+        total,
+        payerId,
+        items: items.map((it) => ({ ...it })),
+        shares: { ...shares },
+        debts: debts.map((d) => ({ ...d, settled: false })),
+      },
+      initial?.id
+    );
   }
 
   return (
     <div className="modal__backdrop" onClick={onClose}>
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <header className="modal__head">
-          <h2>Split a bill</h2>
+          <h2>{isEditing ? 'Edit bill' : 'Split a bill'}</h2>
           <button className="modal__x" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -169,7 +177,7 @@ export default function BillModal({ members, onClose, onPost }) {
               onClick={post}
               disabled={total <= 0 || members.length < 2}
             >
-              Post split to chat
+              {isEditing ? 'Update split' : 'Post split to chat'}
             </button>
           </footer>
         )}

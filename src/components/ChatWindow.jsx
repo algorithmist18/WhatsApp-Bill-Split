@@ -9,6 +9,7 @@ export default function ChatWindow({
   onOpenMembers,
   onOpenSettle,
   onAddBill,
+  onEditBill,
   onPay,
   onSettled,
 }) {
@@ -55,6 +56,7 @@ export default function ChatWindow({
             membersById={membersById}
             onPay={onPay}
             onSettled={onSettled}
+            onEdit={onEditBill}
           />
         ))}
       </div>

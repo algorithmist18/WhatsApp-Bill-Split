@@ -49,6 +49,7 @@ export default function App() {
   const [state, setState] = useState(loadState);
   const [membersOpen, setMembersOpen] = useState(false);
   const [billOpen, setBillOpen] = useState(false);
+  const [editBill, setEditBill] = useState(null);
   const [settleOpen, setSettleOpen] = useState(false);
   const [upiRequest, setUpiRequest] = useState(null);
 
@@ -76,6 +77,33 @@ export default function App() {
       ...s,
       messages: [...s.messages, { id: `msg_${Date.now()}`, ts: Date.now(), ...msg }],
     }));
+  }
+
+  // Replace an existing split with an edited version, keeping its id/timestamp.
+  // The recomputed debts start unsettled; already-recorded settlements stay in
+  // the ledger, so group balances stay consistent.
+  function updateMessage(id, msg) {
+    setState((s) => ({
+      ...s,
+      messages: s.messages.map((m) =>
+        m.id === id ? { ...m, ...msg, id: m.id, ts: m.ts, edited: true } : m
+      ),
+    }));
+  }
+
+  function openAddBill() {
+    setEditBill(null);
+    setBillOpen(true);
+  }
+
+  function openEditBill(message) {
+    setEditBill(message);
+    setBillOpen(true);
+  }
+
+  function closeBill() {
+    setBillOpen(false);
+    setEditBill(null);
   }
 
   function addSettlement({ from, to, amount }) {
@@ -119,7 +147,8 @@ export default function App() {
         membersById={membersById}
         onOpenMembers={() => setMembersOpen(true)}
         onOpenSettle={() => setSettleOpen(true)}
-        onAddBill={() => setBillOpen(true)}
+        onAddBill={openAddBill}
+        onEditBill={openEditBill}
         onPay={(req) => setUpiRequest(req)}
         onSettled={markSettled}
       />
@@ -135,10 +164,12 @@ export default function App() {
       {billOpen && (
         <BillModal
           members={group.members}
-          onClose={() => setBillOpen(false)}
-          onPost={(splitMessage) => {
-            sendMessage(splitMessage);
-            setBillOpen(false);
+          initial={editBill}
+          onClose={closeBill}
+          onPost={(splitMessage, editId) => {
+            if (editId) updateMessage(editId, splitMessage);
+            else sendMessage(splitMessage);
+            closeBill();
           }}
         />
       )}

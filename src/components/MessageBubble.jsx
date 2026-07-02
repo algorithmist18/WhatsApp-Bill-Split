@@ -6,7 +6,7 @@ function timeOf(ts) {
 }
 
 // A rich "bill split" card posted into the chat.
-function SplitCard({ message, membersById, onPay, onSettled }) {
+function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
   const [showItems, setShowItems] = useState(false);
   const payer = membersById[message.payerId];
 
@@ -18,13 +18,21 @@ function SplitCard({ message, membersById, onPay, onSettled }) {
           <div className="splitcard__merchant">{message.merchant || 'Bill'}</div>
           <div className="splitcard__sub">
             {message.mode === 'equal' ? 'Split equally' : 'Split by items'}
+            {message.edited ? ' · edited' : ''}
           </div>
         </div>
         <div className="splitcard__total">{inr(message.total)}</div>
       </div>
 
       <div className="splitcard__paidby">
-        Paid by <strong>{payer ? payer.name : 'someone'}</strong>
+        <span>
+          Paid by <strong>{payer ? payer.name : 'someone'}</strong>
+        </span>
+        {onEdit && (
+          <button className="splitcard__edit" onClick={() => onEdit(message)}>
+            ✏️ Edit
+          </button>
+        )}
       </div>
 
       <button className="splitcard__toggle" onClick={() => setShowItems((v) => !v)}>
@@ -84,7 +92,7 @@ function SplitCard({ message, membersById, onPay, onSettled }) {
   );
 }
 
-export default function MessageBubble({ message, membersById, onPay, onSettled }) {
+export default function MessageBubble({ message, membersById, onPay, onSettled, onEdit }) {
   if (message.type === 'text') {
     const isSystem = message.author === 'system';
     return (
@@ -106,6 +114,7 @@ export default function MessageBubble({ message, membersById, onPay, onSettled }
             membersById={membersById}
             onPay={onPay}
             onSettled={onSettled}
+            onEdit={onEdit}
           />
           <span className="bubble__time">{timeOf(message.ts)}</span>
         </div>
