@@ -4,8 +4,9 @@ import ChatWindow from './components/ChatWindow.jsx';
 import MembersModal from './components/MembersModal.jsx';
 import BillModal from './components/BillModal.jsx';
 import UpiModal from './components/UpiModal.jsx';
+import SettleUpModal from './components/SettleUpModal.jsx';
 
-const STORAGE_KEY = 'splitchat.state.v1';
+const STORAGE_KEY = 'splitchat.state.v2';
 
 function defaultState() {
   return {
@@ -27,13 +28,17 @@ function defaultState() {
         ts: Date.now(),
       },
     ],
+    settlements: [],
   };
 }
 
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { settlements: [], ...parsed };
+    }
   } catch {
     /* ignore corrupt storage */
   }
@@ -44,6 +49,7 @@ export default function App() {
   const [state, setState] = useState(loadState);
   const [membersOpen, setMembersOpen] = useState(false);
   const [billOpen, setBillOpen] = useState(false);
+  const [settleOpen, setSettleOpen] = useState(false);
   const [upiRequest, setUpiRequest] = useState(null);
 
   useEffect(() => {
@@ -54,7 +60,7 @@ export default function App() {
     }
   }, [state]);
 
-  const { group, messages } = state;
+  const { group, messages, settlements } = state;
 
   const membersById = useMemo(
     () => Object.fromEntries(group.members.map((m) => [m.id, m])),
@@ -72,17 +78,35 @@ export default function App() {
     }));
   }
 
-  function markSettled(messageId, debtIndex) {
+  function addSettlement({ from, to, amount }) {
     setState((s) => ({
       ...s,
-      messages: s.messages.map((m) => {
-        if (m.id !== messageId || m.type !== 'split') return m;
-        const debts = m.debts.map((d, i) =>
-          i === debtIndex ? { ...d, settled: true } : d
-        );
-        return { ...m, debts };
-      }),
+      settlements: [
+        ...s.settlements,
+        { id: `st_${Date.now()}`, from, to, amount, ts: Date.now() },
+      ],
     }));
+  }
+
+  // Paying a specific bill debt: tick it off on the card AND record it as a
+  // settlement so the group-wide balance reflects the payment.
+  function markSettled(messageId, debtIndex) {
+    setState((s) => {
+      let paid = null;
+      const nextMessages = s.messages.map((m) => {
+        if (m.id !== messageId || m.type !== 'split') return m;
+        const debts = m.debts.map((d, i) => {
+          if (i !== debtIndex || d.settled) return d;
+          paid = { from: d.from, to: d.to, amount: d.amount };
+          return { ...d, settled: true };
+        });
+        return { ...m, debts };
+      });
+      const nextSettlements = paid
+        ? [...s.settlements, { id: `st_${Date.now()}`, ...paid, ts: Date.now() }]
+        : s.settlements;
+      return { ...s, messages: nextMessages, settlements: nextSettlements };
+    });
   }
 
   return (
@@ -94,6 +118,7 @@ export default function App() {
         messages={messages}
         membersById={membersById}
         onOpenMembers={() => setMembersOpen(true)}
+        onOpenSettle={() => setSettleOpen(true)}
         onAddBill={() => setBillOpen(true)}
         onPay={(req) => setUpiRequest(req)}
         onSettled={markSettled}
@@ -115,6 +140,17 @@ export default function App() {
             sendMessage(splitMessage);
             setBillOpen(false);
           }}
+        />
+      )}
+
+      {settleOpen && (
+        <SettleUpModal
+          members={group.members}
+          messages={messages}
+          settlements={settlements}
+          onPay={(req) => setUpiRequest(req)}
+          onSettle={addSettlement}
+          onClose={() => setSettleOpen(false)}
         />
       )}
 

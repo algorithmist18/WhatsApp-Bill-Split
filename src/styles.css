@@ -155,7 +155,24 @@ button {
   align-items: center;
   gap: 14px;
   padding: 0 16px;
+}
+.chat__headmain {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
   cursor: pointer;
+}
+.chat__settle {
+  border: none;
+  background: var(--wa-green);
+  color: #fff;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-weight: 600;
+  font-size: 13.5px;
+  white-space: nowrap;
 }
 
 .chat__headtext {
@@ -598,6 +615,29 @@ button {
   color: var(--wa-muted);
   font-size: 13px;
 }
+.scanning__bar {
+  width: 220px;
+  height: 6px;
+  background: #e3e8ea;
+  border-radius: 3px;
+  margin: 4px auto 10px;
+  overflow: hidden;
+}
+.scanning__barfill {
+  height: 100%;
+  background: var(--wa-green);
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+.edit__ocrnote {
+  background: #fffbea;
+  border: 1px solid #f0e0a0;
+  color: #7a6a2a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -860,6 +900,83 @@ button {
   border-radius: 10px;
   padding: 16px;
   font-size: 14px;
+}
+
+/* ---------- Settle up ---------- */
+.balancelist {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--wa-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.balancelist__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--wa-border);
+}
+.balancelist__row:last-child {
+  border-bottom: none;
+}
+.balancelist__name {
+  font-weight: 600;
+}
+.balancelist__amt {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.balancelist__amt--up {
+  color: var(--wa-green-dark);
+}
+.balancelist__amt--down {
+  color: #c0392b;
+}
+.balancelist__amt--even {
+  color: var(--wa-muted);
+  font-weight: 600;
+}
+.settlelist {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settlelist__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f7f8fa;
+  border-radius: 10px;
+  padding: 10px 12px;
+  flex-wrap: wrap;
+}
+.settlelist__amt {
+  margin-left: 8px;
+  font-weight: 700;
+  color: var(--wa-green-dark);
+}
+.settlelist__actions {
+  display: flex;
+  gap: 8px;
+}
+.settle__done {
+  text-align: center;
+  padding: 18px;
+  color: var(--wa-muted);
+  background: #f1faf7;
+  border-radius: 10px;
+}
+.settle__note {
+  font-size: 12px;
+  color: var(--wa-muted);
+  margin: 12px 0 0;
 }
 
 /* ---------- Responsive ---------- */

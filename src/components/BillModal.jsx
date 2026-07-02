@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { mockOcr, blankItem } from '../lib/ocr.js';
+import { runOcr, blankItem } from '../lib/ocr.js';
 import { computeShares, computeDebts, itemsTotal } from '../lib/split.js';
 import { inr, initials } from '../lib/format.js';
 import {
@@ -16,6 +16,8 @@ export default function BillModal({ members, onClose, onPost }) {
   const [items, setItems] = useState([]);
   const [mode, setMode] = useState('equal'); // equal | itemized
   const [payerId, setPayerId] = useState(members[0]?.id ?? '');
+  const [progress, setProgress] = useState(0);
+  const [ocrNote, setOcrNote] = useState('');
 
   const fileInputRef = useRef(null);
 
@@ -36,9 +38,23 @@ export default function BillModal({ members, onClose, onPost }) {
       setPreviewUrl(URL.createObjectURL(file));
     }
     setStage('scanning');
-    const result = await mockOcr(file);
-    setMerchant(result.merchant);
-    setItems(result.items);
+    setProgress(0);
+    setOcrNote('');
+    try {
+      const result = await runOcr(file, setProgress);
+      setMerchant(result.merchant);
+      if (result.items.length > 0) {
+        setItems(result.items);
+      } else {
+        setItems([blankItem()]);
+        setOcrNote("Couldn't read any items automatically — add them below.");
+      }
+    } catch (err) {
+      console.warn('OCR failed:', err);
+      setMerchant('Receipt');
+      setItems([blankItem()]);
+      setOcrNote('OCR failed to run — enter the items manually.');
+    }
     setStage('edit');
   }
 
@@ -73,6 +89,7 @@ export default function BillModal({ members, onClose, onPost }) {
       total,
       payerId,
       items: items.map((it) => ({ ...it })),
+      shares: { ...shares },
       debts: debts.map((d) => ({ ...d, settled: false })),
     });
   }
@@ -100,7 +117,15 @@ export default function BillModal({ members, onClose, onPost }) {
             <div className="scanning">
               <div className="scanning__spinner" />
               <p>Reading receipt…</p>
-              <span className="scanning__hint">Recognising items with OCR</span>
+              <div className="scanning__bar">
+                <div
+                  className="scanning__barfill"
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
+              </div>
+              <span className="scanning__hint">
+                Recognising text with OCR · {Math.round(progress * 100)}%
+              </span>
             </div>
           )}
 
@@ -110,6 +135,7 @@ export default function BillModal({ members, onClose, onPost }) {
               setMerchant={setMerchant}
               fileName={fileName}
               previewUrl={previewUrl}
+              ocrNote={ocrNote}
               items={items}
               total={total}
               mode={mode}
@@ -172,7 +198,7 @@ function UploadStage({ onPick, inputRef, onFile }) {
       <div className="dropzone__icon">🧾</div>
       <p className="dropzone__title">Upload a photo of the bill</p>
       <p className="dropzone__hint">Tap to choose an image, or drag &amp; drop it here</p>
-      <span className="dropzone__ocr">We'll read the items automatically (mock OCR)</span>
+      <span className="dropzone__ocr">We'll read the items automatically with OCR</span>
       <input
         ref={inputRef}
         type="file"
@@ -190,6 +216,7 @@ function EditStage(props) {
     setMerchant,
     fileName,
     previewUrl,
+    ocrNote,
     items,
     total,
     mode,
@@ -222,6 +249,7 @@ function EditStage(props) {
       </div>
 
       <label className="field__label">Items</label>
+      {ocrNote && <div className="edit__ocrnote">{ocrNote}</div>}
       <ul className="itemlist">
         {items.map((it) => (
           <li key={it.id} className="itemrow">

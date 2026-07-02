@@ -7,6 +7,7 @@ export default function ChatWindow({
   messages,
   membersById,
   onOpenMembers,
+  onOpenSettle,
   onAddBill,
   onPay,
   onSettled,
@@ -28,14 +29,19 @@ export default function ChatWindow({
 
   return (
     <main className="chat">
-      <header className="chat__header" onClick={onOpenMembers}>
-        <div className="avatar avatar--group">{initials(group.name)}</div>
-        <div className="chat__headtext">
-          <span className="chat__title">{group.name}</span>
-          <span className="chat__subtitle">
-            {group.members.map((m) => m.name.split(' ')[0]).join(', ')}
-          </span>
+      <header className="chat__header">
+        <div className="chat__headmain" onClick={onOpenMembers}>
+          <div className="avatar avatar--group">{initials(group.name)}</div>
+          <div className="chat__headtext">
+            <span className="chat__title">{group.name}</span>
+            <span className="chat__subtitle">
+              {group.members.map((m) => m.name.split(' ')[0]).join(', ')}
+            </span>
+          </div>
         </div>
+        <button className="chat__settle" onClick={onOpenSettle}>
+          ⚖️ Settle up
+        </button>
       </header>
 
       <div className="chat__scroll" ref={scrollRef}>
