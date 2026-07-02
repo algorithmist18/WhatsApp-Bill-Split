@@ -5,6 +5,7 @@ import MembersModal from './components/MembersModal.jsx';
 import BillModal from './components/BillModal.jsx';
 import UpiModal from './components/UpiModal.jsx';
 import SettleUpModal from './components/SettleUpModal.jsx';
+import { answer } from './lib/assistant.js';
 
 const STORAGE_KEY = 'splitchat.state.v2';
 
@@ -91,6 +92,27 @@ export default function App() {
     }));
   }
 
+  // A typed message goes into the chat, and SplitBot replies with an answer
+  // about balances / history computed from the current group state.
+  function handleSendText(text) {
+    const reply = answer(text, {
+      members: group.members,
+      messages,
+      settlements,
+    });
+    setState((s) => {
+      const now = Date.now();
+      return {
+        ...s,
+        messages: [
+          ...s.messages,
+          { id: `msg_${now}`, ts: now, type: 'text', author: 'you', text },
+          { id: `bot_${now}`, ts: now + 1, type: 'bot', ...reply },
+        ],
+      };
+    });
+  }
+
   function openAddBill() {
     setEditBill(null);
     setBillOpen(true);
@@ -149,6 +171,7 @@ export default function App() {
         onOpenSettle={() => setSettleOpen(true)}
         onAddBill={openAddBill}
         onEditBill={openEditBill}
+        onSendText={handleSendText}
         onPay={(req) => setUpiRequest(req)}
         onSettled={markSettled}
       />

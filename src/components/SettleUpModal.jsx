@@ -1,6 +1,15 @@
 import React, { useMemo } from 'react';
 import { computeBalances, minimalTransactions } from '../lib/balances.js';
+import { buildActivityLog } from '../lib/activity.js';
 import { inr, initials } from '../lib/format.js';
+
+function fmtDate(ts) {
+  return new Date(ts).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
 
 // Group-wide settle-up view: net balances across every bill, plus the
 // minimal set of payments that squares everyone up.
@@ -22,6 +31,10 @@ export default function SettleUpModal({
     [messages, settlements, members]
   );
   const transactions = useMemo(() => minimalTransactions(net), [net]);
+  const activity = useMemo(
+    () => buildActivityLog(messages, settlements, members),
+    [messages, settlements, members]
+  );
 
   const nothingToSettle = transactions.length === 0;
 
@@ -106,6 +119,32 @@ export default function SettleUpModal({
             Balances combine every bill posted in the group. Paying a suggested
             amount records a settlement and recalculates the rest.
           </p>
+
+          <div className="field__label" style={{ marginTop: 18 }}>
+            Transaction log
+          </div>
+          {activity.length === 0 ? (
+            <div className="settle__done">No activity yet.</div>
+          ) : (
+            <ul className="activitylist">
+              {activity.map((e) => (
+                <li key={e.id} className="activity__row">
+                  <span className="activity__icon">{e.icon}</span>
+                  <div className="activity__text">
+                    <div className="activity__title">{e.title}</div>
+                    <div className="activity__sub">
+                      {fmtDate(e.ts)} · {e.subtitle}
+                    </div>
+                  </div>
+                  <span
+                    className={`activity__amt activity__amt--${e.kind}`}
+                  >
+                    {inr(e.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <footer className="modal__foot">

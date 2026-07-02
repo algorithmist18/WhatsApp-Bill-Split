@@ -579,6 +579,124 @@ button {
   padding: 4px;
 }
 
+/* ---------- Category picker ---------- */
+.catpick__label {
+  font-weight: 600;
+  margin: 0 0 14px;
+}
+.catpick__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.catpick__opt {
+  border: 1px solid var(--wa-border);
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: 0.12s;
+}
+.catpick__opt:hover {
+  border-color: var(--wa-green);
+  background: #f1faf7;
+}
+.catpick__icon {
+  font-size: 30px;
+}
+.catpick__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+.edit__catbadge {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  background: #f1faf7;
+  border: 1px solid var(--wa-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  flex-shrink: 0;
+}
+
+/* ---------- Bot card ---------- */
+.bubble--bot {
+  background: #f3f7f6;
+  border: 1px solid #dfe9e6;
+  max-width: 88%;
+}
+.botcard__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.botcard__avatar {
+  font-size: 16px;
+}
+.botcard__title {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--wa-green-dark);
+}
+.botcard__line {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.botcard__gap {
+  height: 6px;
+}
+
+/* ---------- Activity log ---------- */
+.activitylist {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--wa-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.activity__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--wa-border);
+}
+.activity__row:last-child {
+  border-bottom: none;
+}
+.activity__icon {
+  font-size: 18px;
+}
+.activity__text {
+  flex: 1;
+  min-width: 0;
+}
+.activity__title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.activity__sub {
+  font-size: 12px;
+  color: var(--wa-muted);
+}
+.activity__amt {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.activity__amt--settlement {
+  color: var(--wa-green-dark);
+}
+.activity__amt--bill {
+  color: var(--wa-text);
+}
+
 /* ---------- Upload / OCR ---------- */
 .dropzone {
   border: 2px dashed #c7ccd0;

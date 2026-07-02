@@ -11,9 +11,11 @@ it automatically, see clearly **who owes whom how much**, and settle up over
 
 1. **Group + members** — one WhatsApp-style group; add/edit/remove people, each
    with a name and a UPI id (`name@bank`). Tap the group header to manage them.
-2. **Upload a bill** — hit 📎 / **Split a bill**, drop in a photo of a receipt.
-   **Real OCR** (Tesseract.js) reads the text in the browser and extracts the
-   line items and amounts (all editable afterwards).
+2. **Add an expense** — hit 📎 / **Split a bill** and pick a category:
+   🍽️ Restaurant, 🚕 Taxi ride, 🏠 Rent, 🛒 Blinkit, 📦 E-commerce, or ➕ Other.
+   **Restaurant** uses **real OCR** (Tesseract.js) to read the receipt; the other
+   categories jump to a quick amount/items form. The category icon shows on the
+   posted card, and any bill can be **edited** later from the card.
 3. **Split it** — two ways:
    - **Split equally** across the whole group, or
    - **Assign items** — tap chips per item, or use **🎤 voice**: say something
@@ -25,8 +27,12 @@ it automatically, see clearly **who owes whom how much**, and settle up over
    `upi://pay?…` deep link plus a scannable **QR code**. On a phone the link
    opens GPay / PhonePe / Paytm pre-filled; you can then **Mark as paid**.
 6. **Settle up** — the **⚖️ Settle up** button (chat header) shows each person's
-   **net balance across every bill** and the **minimal set of payments** that
-   squares the whole group up, each with its own UPI link.
+   **net balance across every bill**, the **minimal set of payments** that squares
+   the whole group up (each with its own UPI link), and a **transaction log** of
+   who paid whom/what and when.
+7. **Ask SplitBot** — the message box is live. Type things like *“who owes what”*,
+   *“how much does Rahul owe”*, or *“show the log”* and a bot replies with the
+   cumulative balances or history, computed from the current group state.
 
 State is saved in `localStorage`, so your group, splits, and settlements survive
 a refresh.
@@ -77,13 +83,16 @@ src/
     ChatWindow.jsx        chat header, messages, composer
     MessageBubble.jsx     text bubbles + the bill-split card
     MembersModal.jsx      add/edit group members
-    BillModal.jsx         upload → OCR → edit → split (equal/voice)
+    BillModal.jsx         category → OCR/manual → edit → split (equal/voice)
     UpiModal.jsx          UPI deep link + QR
-    SettleUpModal.jsx     group net balances + minimal payments
+    SettleUpModal.jsx     group balances + minimal payments + activity log
   lib/
     ocr.js                Tesseract.js OCR + receipt parsing
+    categories.js         expense categories (restaurant/taxi/rent/…)
     split.js              per-bill share + debt calculation
     balances.js           group balances + minimum-cash-flow settle-up
+    activity.js           combined bill + settlement timeline
+    assistant.js          "SplitBot" chat query answers
     voice.js              speech recognition + phrase parsing
     upi.js                upi:// link builder
     format.js             INR formatting helpers

@@ -10,6 +10,7 @@ export default function ChatWindow({
   onOpenSettle,
   onAddBill,
   onEditBill,
+  onSendText,
   onPay,
   onSettled,
 }) {
@@ -23,8 +24,9 @@ export default function ChatWindow({
 
   function handleSend(e) {
     e.preventDefault();
-    // The plain-text composer is a visual stub — this prototype is about the
-    // bill-split flow, so free-text chat just clears without a backend.
+    const text = draft.trim();
+    if (!text) return;
+    onSendText?.(text);
     setDraft('');
   }
 
@@ -73,7 +75,7 @@ export default function ChatWindow({
         <form className="composer__form" onSubmit={handleSend}>
           <input
             className="composer__input"
-            placeholder="Type a message"
+            placeholder="Ask “who owes what” or “show the log”…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />

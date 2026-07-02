@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { runOcr, blankItem } from '../lib/ocr.js';
 import { computeShares, computeDebts, itemsTotal } from '../lib/split.js';
 import { inr, initials } from '../lib/format.js';
+import { CATEGORIES, getCategory } from '../lib/categories.js';
 import {
   isVoiceSupported,
   createRecognizer,
@@ -10,9 +11,10 @@ import {
 
 export default function BillModal({ members, onClose, onPost, initial = null }) {
   const isEditing = !!initial;
-  // When editing an already-posted bill, jump straight to the edit stage
-  // prefilled with its items, split mode and payer.
-  const [stage, setStage] = useState(isEditing ? 'edit' : 'upload');
+  // New bills start at category selection; editing jumps straight to the edit
+  // stage prefilled with the bill's items, split mode and payer.
+  const [stage, setStage] = useState(isEditing ? 'edit' : 'category');
+  const [category, setCategory] = useState(initial?.category ?? 'restaurant');
   const [merchant, setMerchant] = useState(initial?.merchant ?? '');
   const [fileName, setFileName] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
@@ -23,6 +25,21 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   const [payerId, setPayerId] = useState(initial?.payerId ?? members[0]?.id ?? '');
   const [progress, setProgress] = useState(0);
   const [ocrNote, setOcrNote] = useState('');
+
+  const cat = getCategory(category);
+
+  // Pick a category: restaurants go through OCR, everything else jumps to a
+  // quick manual amount/items form.
+  function chooseCategory(c) {
+    setCategory(c.id);
+    if (c.ocr) {
+      setStage('upload');
+    } else {
+      setMerchant('');
+      setItems([blankItem()]);
+      setStage('edit');
+    }
+  }
 
   const fileInputRef = useRef(null);
 
@@ -90,7 +107,8 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
       {
         type: 'split',
         author: 'you',
-        merchant,
+        category,
+        merchant: merchant.trim() || cat.label,
         mode,
         total,
         payerId,
@@ -113,6 +131,24 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
         </header>
 
         <div className="modal__body">
+          {stage === 'category' && (
+            <div className="catpick">
+              <p className="catpick__label">What kind of expense is this?</p>
+              <div className="catpick__grid">
+                {CATEGORIES.map((c) => (
+                  <button
+                    key={c.id}
+                    className="catpick__opt"
+                    onClick={() => chooseCategory(c)}
+                  >
+                    <span className="catpick__icon">{c.icon}</span>
+                    <span className="catpick__name">{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {stage === 'upload' && (
             <UploadStage
               onPick={() => fileInputRef.current?.click()}
@@ -139,6 +175,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
 
           {stage === 'edit' && (
             <EditStage
+              category={cat}
               merchant={merchant}
               setMerchant={setMerchant}
               fileName={fileName}
@@ -220,6 +257,7 @@ function UploadStage({ onPick, inputRef, onFile }) {
 
 function EditStage(props) {
   const {
+    category,
     merchant,
     setMerchant,
     fileName,
@@ -241,22 +279,29 @@ function EditStage(props) {
     applyVoice,
   } = props;
 
+  const isSingle = items.length === 1;
+
   return (
     <div className="edit">
       <div className="edit__topbar">
-        {previewUrl && <img className="edit__thumb" src={previewUrl} alt="receipt" />}
+        {previewUrl ? (
+          <img className="edit__thumb" src={previewUrl} alt="receipt" />
+        ) : (
+          <div className="edit__catbadge">{category?.icon || '🧾'}</div>
+        )}
         <div className="edit__merchant">
-          <label className="field__label">Merchant</label>
+          <label className="field__label">{category?.titleLabel || 'Merchant'}</label>
           <input
             className="input"
             value={merchant}
+            placeholder={category?.label}
             onChange={(e) => setMerchant(e.target.value)}
           />
           {fileName && <span className="edit__file">from {fileName}</span>}
         </div>
       </div>
 
-      <label className="field__label">Items</label>
+      <label className="field__label">{isSingle ? 'Amount' : 'Items'}</label>
       {ocrNote && <div className="edit__ocrnote">{ocrNote}</div>}
       <ul className="itemlist">
         {items.map((it) => (

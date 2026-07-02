@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { inr } from '../lib/format.js';
+import { getCategory } from '../lib/categories.js';
 
 function timeOf(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -9,15 +10,16 @@ function timeOf(ts) {
 function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
   const [showItems, setShowItems] = useState(false);
   const payer = membersById[message.payerId];
+  const cat = getCategory(message.category);
 
   return (
     <div className="splitcard">
       <div className="splitcard__head">
-        <span className="splitcard__icon">🧾</span>
+        <span className="splitcard__icon">{cat.icon}</span>
         <div>
           <div className="splitcard__merchant">{message.merchant || 'Bill'}</div>
           <div className="splitcard__sub">
-            {message.mode === 'equal' ? 'Split equally' : 'Split by items'}
+            {cat.label} · {message.mode === 'equal' ? 'Split equally' : 'Split by items'}
             {message.edited ? ' · edited' : ''}
           </div>
         </div>
@@ -95,10 +97,38 @@ function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
 export default function MessageBubble({ message, membersById, onPay, onSettled, onEdit }) {
   if (message.type === 'text') {
     const isSystem = message.author === 'system';
+    const isMine = message.author === 'you';
+    const row = isSystem ? 'bubblerow--system' : isMine ? 'bubblerow--out' : 'bubblerow--in';
+    const bub = isSystem ? 'bubble--system' : isMine ? 'bubble--out' : 'bubble--in';
     return (
-      <div className={`bubblerow ${isSystem ? 'bubblerow--system' : 'bubblerow--in'}`}>
-        <div className={`bubble ${isSystem ? 'bubble--system' : 'bubble--in'}`}>
+      <div className={`bubblerow ${row}`}>
+        <div className={`bubble ${bub}`}>
           <span className="bubble__text">{message.text}</span>
+          <span className="bubble__time">{timeOf(message.ts)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (message.type === 'bot') {
+    return (
+      <div className="bubblerow bubblerow--in">
+        <div className="bubble bubble--in bubble--bot">
+          <div className="botcard__head">
+            <span className="botcard__avatar">🤖</span>
+            <span className="botcard__title">{message.title}</span>
+          </div>
+          <div className="botcard__body">
+            {message.lines.map((line, i) =>
+              line === '' ? (
+                <div key={i} className="botcard__gap" />
+              ) : (
+                <div key={i} className="botcard__line">
+                  {line}
+                </div>
+              )
+            )}
+          </div>
           <span className="bubble__time">{timeOf(message.ts)}</span>
         </div>
       </div>
