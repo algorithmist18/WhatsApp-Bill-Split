@@ -36,50 +36,100 @@ export function createRecognizer({ onResult, onError, onEnd }) {
   return rec;
 }
 
-// Keywords that mean "share this across the whole group".
-const ALL_RE = /\b(everyone|everybody|all of us|all|together|group|shared?)\b/;
+// Phrases that mean "share this across the WHOLE group". Deliberately narrow:
+// words like "share"/"together" only mean the *named* people share an item, so
+// they must NOT trigger a group-wide split.
+const ALL_RE =
+  /\b(everyone|everybody|every ?one|all of us|whole group|entire group|the group|\ball\b)\b/;
+
+// First-person words map to the member literally named "You" (the phone owner).
+const SELF_RE = /\b(me|my|mine|i|myself|i'?ll|i'?m)\b/;
+
+// Filler words that appear inside item names but shouldn't be used to match.
+const STOP = new Set([
+  'the', 'and', 'for', 'with', 'plus', 'extra', 'reg', 'regular', 'large',
+  'small', 'medium', 'pcs', 'pc', 'qty', 'combo', 'set', 'plate', 'half', 'full',
+]);
+
+function escapeRe(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function firstName(member) {
   return member.name.trim().split(/\s+/)[0].toLowerCase();
 }
 
-// Pick the most identifying word of an item name (longest alphabetic token),
-// so "Margherita Pizza" can be matched by just saying "pizza".
+// Identifying words of an item name, longest first, so "Margherita Pizza" can be
+// matched by just saying "pizza" and stopwords like "the"/"reg" are ignored.
 function itemKeywords(item) {
   const words = item.name
     .toLowerCase()
     .replace(/\(.*?\)/g, ' ')
     .split(/[^a-z]+/)
-    .filter((w) => w.length >= 3);
+    .filter((w) => w.length >= 3 && !STOP.has(w));
   return words.sort((a, b) => b.length - a.length);
 }
 
+// Members mentioned in a clause. Uses word boundaries so "Sam" doesn't also
+// match "Sameer", and maps first-person words to the "You" member.
+function membersInClause(clause, members) {
+  const found = [];
+  for (const m of members) {
+    const fn = escapeRe(firstName(m));
+    if (new RegExp(`\\b${fn}\\b`).test(clause)) found.push(m);
+  }
+  if (SELF_RE.test(clause)) {
+    const self = members.find((m) => m.name.trim().toLowerCase() === 'you');
+    if (self && !found.includes(self)) found.push(self);
+  }
+  return found;
+}
+
+// Items mentioned in a clause (by full name or any identifying keyword).
+function itemsInClause(clause, items) {
+  return items.filter((it) => {
+    const name = it.name.toLowerCase().trim();
+    if (name && clause.includes(name)) return true;
+    return itemKeywords(it).some((k) => new RegExp(`\\b${escapeRe(k)}\\b`).test(clause));
+  });
+}
+
+// Maps a spoken transcript onto the line items.
+//
+// Each comma / "then" / "also" separated clause is one instruction: the items
+// it names go to the people it names. "everyone" (with no specific names) shares
+// across the whole group. Items named with nobody are left unassigned (they fall
+// back to an even split at settle time).
+//
 // Returns { items: updatedItems, log: humanReadableAssignments }.
 export function parseAssignments(transcript, items, members) {
-  const clauses = transcript
-    .toLowerCase()
-    .split(/[,.;]|\bthen\b|\balso\b/)
+  const clean = ` ${transcript.toLowerCase().replace(/&/g, ' and ')} `;
+  const clauses = clean
+    .split(/[,;.]|\bthen\b|\balso\b|\bplus\b|\bnext\b/)
     .map((s) => s.trim())
     .filter(Boolean);
 
   const result = items.map((it) => ({ ...it, assignedTo: [...(it.assignedTo || [])] }));
   const log = [];
 
-  for (const clause of clauses) {
-    const matchedMembers = members.filter((m) => clause.includes(firstName(m)));
-    const wantsAll = ALL_RE.test(clause);
-    let targets = wantsAll ? members : matchedMembers;
-    if (targets.length === 0) continue;
+  for (const raw of clauses) {
+    const clause = ` ${raw} `;
+    const mentionedItems = itemsInClause(clause, result);
+    if (mentionedItems.length === 0) continue;
 
-    for (const it of result) {
-      const keywords = itemKeywords(it);
-      const hit =
-        clause.includes(it.name.toLowerCase()) ||
-        keywords.some((k) => new RegExp(`\\b${k}\\b`).test(clause));
-      if (hit) {
-        it.assignedTo = targets.map((m) => m.id);
-        log.push(`${it.name} → ${targets.map((m) => m.name.split(' ')[0]).join(', ')}`);
-      }
+    const mentionedMembers = membersInClause(clause, members);
+    const wantsAll = mentionedMembers.length === 0 && ALL_RE.test(clause);
+
+    let targets;
+    if (mentionedMembers.length > 0) targets = mentionedMembers;
+    else if (wantsAll) targets = members;
+    else continue; // item named but no people — leave it unassigned
+
+    for (const it of mentionedItems) {
+      it.assignedTo = targets.map((m) => m.id);
+      log.push(
+        `${it.name} → ${targets.map((m) => m.name.split(' ')[0]).join(', ')}`
+      );
     }
   }
 
