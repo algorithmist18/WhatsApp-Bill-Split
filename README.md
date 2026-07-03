@@ -39,6 +39,10 @@ it automatically, see clearly **who owes whom how much**, and settle up over
 7. **Ask SplitBot** — the message box is live. Type things like *“who owes what”*,
    *“how much does Rahul owe”*, or *“show the log”* and a bot replies with the
    cumulative balances or history, computed from the current group state.
+8. **Raise a dispute** — any split card has a **⚠️ Dispute** button. Pick who's
+   raising it and why (quick reasons or free text); the card shows a dispute
+   banner, a note is posted in the chat, and the dispute can be **resolved**
+   (often followed by an **Edit** to fix the bill).
 
 State is saved in `localStorage`, so your group, splits, and settlements survive
 a refresh.
@@ -92,6 +96,7 @@ src/
     BillModal.jsx         category → OCR/manual → edit → split (equal/voice)
     UpiModal.jsx          UPI deep link + QR
     SettleUpModal.jsx     group balances + minimal payments + activity log
+    DisputeModal.jsx      raise a dispute on a bill (who + reason)
   lib/
     ocr.js                Tesseract.js OCR + receipt parsing
     categories.js         expense categories (restaurant/taxi/rent/…)

@@ -13,17 +13,21 @@ function modeLabel(mode) {
 }
 
 // A rich "bill split" card posted into the chat.
-function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
+function SplitCard({ message, membersById, onPay, onSettled, onEdit, onDispute, onResolveDispute }) {
   const [showItems, setShowItems] = useState(false);
   const payer = membersById[message.payerId];
   const cat = getCategory(message.category);
+  const openDisputes = (message.disputes || []).filter((d) => d.status === 'open');
 
   return (
-    <div className="splitcard">
+    <div className={`splitcard ${openDisputes.length ? 'splitcard--disputed' : ''}`}>
       <div className="splitcard__head">
         <span className="splitcard__icon">{cat.icon}</span>
         <div>
-          <div className="splitcard__merchant">{message.merchant || 'Bill'}</div>
+          <div className="splitcard__merchant">
+            {message.merchant || 'Bill'}
+            {openDisputes.length > 0 && <span className="splitcard__flag">⚠️ Disputed</span>}
+          </div>
           <div className="splitcard__sub">
             {cat.label} · {modeLabel(message.mode)}
             {message.edited ? ' · edited' : ''}
@@ -32,15 +36,43 @@ function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
         <div className="splitcard__total">{inr(message.total)}</div>
       </div>
 
+      {openDisputes.length > 0 && (
+        <div className="splitcard__disputes">
+          {openDisputes.map((d) => (
+            <div key={d.id} className="dispute__banner">
+              <div className="dispute__bannertext">
+                <strong>{membersById[d.by]?.name.split(' ')[0] || 'Someone'}</strong>{' '}
+                disputes this: “{d.reason}”
+              </div>
+              {onResolveDispute && (
+                <button
+                  className="dispute__resolve"
+                  onClick={() => onResolveDispute(message.id, d.id)}
+                >
+                  Resolve
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="splitcard__paidby">
         <span>
           Paid by <strong>{payer ? payer.name : 'someone'}</strong>
         </span>
-        {onEdit && (
-          <button className="splitcard__edit" onClick={() => onEdit(message)}>
-            ✏️ Edit
-          </button>
-        )}
+        <span className="splitcard__actions">
+          {onDispute && (
+            <button className="splitcard__dispute" onClick={() => onDispute(message)}>
+              ⚠️ Dispute
+            </button>
+          )}
+          {onEdit && (
+            <button className="splitcard__edit" onClick={() => onEdit(message)}>
+              ✏️ Edit
+            </button>
+          )}
+        </span>
       </div>
 
       <button className="splitcard__toggle" onClick={() => setShowItems((v) => !v)}>
@@ -100,7 +132,15 @@ function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
   );
 }
 
-export default function MessageBubble({ message, membersById, onPay, onSettled, onEdit }) {
+export default function MessageBubble({
+  message,
+  membersById,
+  onPay,
+  onSettled,
+  onEdit,
+  onDispute,
+  onResolveDispute,
+}) {
   if (message.type === 'text') {
     const isSystem = message.author === 'system';
     const isMine = message.author === 'you';
@@ -151,6 +191,8 @@ export default function MessageBubble({ message, membersById, onPay, onSettled, 
             onPay={onPay}
             onSettled={onSettled}
             onEdit={onEdit}
+            onDispute={onDispute}
+            onResolveDispute={onResolveDispute}
           />
           <span className="bubble__time">{timeOf(message.ts)}</span>
         </div>

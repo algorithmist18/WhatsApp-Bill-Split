@@ -307,6 +307,10 @@ button {
   justify-content: space-between;
   gap: 8px;
 }
+.splitcard__actions {
+  display: flex;
+  gap: 6px;
+}
 .splitcard__edit {
   border: 1px solid var(--wa-border);
   background: #fff;
@@ -315,6 +319,83 @@ button {
   padding: 4px 10px;
   font-size: 12px;
   font-weight: 600;
+}
+.splitcard__dispute {
+  border: 1px solid #f0c9c2;
+  background: #fff;
+  color: #c0392b;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.splitcard--disputed {
+  outline: 2px solid #f3c0b8;
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.splitcard__flag {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c0392b;
+  background: #fdeae7;
+  padding: 2px 7px;
+  border-radius: 10px;
+  vertical-align: middle;
+}
+.splitcard__disputes {
+  padding: 8px 12px 0;
+}
+.dispute__banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fdeae7;
+  border: 1px solid #f3c0b8;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.dispute__bannertext {
+  flex: 1;
+  font-size: 12.5px;
+  color: #7a2820;
+}
+.dispute__resolve {
+  border: none;
+  background: #c0392b;
+  color: #fff;
+  border-radius: 14px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- Dispute modal ---------- */
+.dispute__bill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f7f8fa;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+}
+.dispute__billicon {
+  font-size: 24px;
+}
+.dispute__billname {
+  font-weight: 700;
+}
+.dispute__billsub {
+  font-size: 12px;
+  color: var(--wa-muted);
+}
+.dispute__reason {
+  resize: vertical;
+  font-family: inherit;
 }
 .splitcard__toggle {
   background: none;
@@ -442,6 +523,15 @@ button {
   color: #fff;
   padding: 6px 12px;
   font-size: 13px;
+}
+.btn--danger {
+  background: #c0392b;
+  border-color: #c0392b;
+  color: #fff;
+}
+.btn--danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .btn--sm {
   padding: 6px 10px;

@@ -13,6 +13,8 @@ export default function ChatWindow({
   onSendText,
   onPay,
   onSettled,
+  onDispute,
+  onResolveDispute,
 }) {
   const [draft, setDraft] = useState('');
   const scrollRef = useRef(null);
@@ -59,6 +61,8 @@ export default function ChatWindow({
             onPay={onPay}
             onSettled={onSettled}
             onEdit={onEditBill}
+            onDispute={onDispute}
+            onResolveDispute={onResolveDispute}
           />
         ))}
       </div>

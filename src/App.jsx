@@ -5,6 +5,7 @@ import MembersModal from './components/MembersModal.jsx';
 import BillModal from './components/BillModal.jsx';
 import UpiModal from './components/UpiModal.jsx';
 import SettleUpModal from './components/SettleUpModal.jsx';
+import DisputeModal from './components/DisputeModal.jsx';
 import { answer } from './lib/assistant.js';
 
 const STORAGE_KEY = 'splitchat.state.v2';
@@ -53,6 +54,7 @@ export default function App() {
   const [editBill, setEditBill] = useState(null);
   const [settleOpen, setSettleOpen] = useState(false);
   const [upiRequest, setUpiRequest] = useState(null);
+  const [disputeTarget, setDisputeTarget] = useState(null);
 
   useEffect(() => {
     try {
@@ -159,6 +161,53 @@ export default function App() {
     });
   }
 
+  // Raise a dispute on a bill: record it on the message and announce it in chat.
+  function addDispute(messageId, by, reason) {
+    const byName = membersById[by]?.name.split(' ')[0] || 'Someone';
+    setState((s) => {
+      const now = Date.now();
+      let merchant = 'the bill';
+      const nextMessages = s.messages.map((m) => {
+        if (m.id !== messageId || m.type !== 'split') return m;
+        merchant = m.merchant || 'the bill';
+        const dispute = { id: `dp_${now}`, by, reason, ts: now, status: 'open' };
+        return { ...m, disputes: [...(m.disputes || []), dispute] };
+      });
+      nextMessages.push({
+        id: `sys_${now}`,
+        ts: now + 1,
+        type: 'text',
+        author: 'system',
+        text: `⚠️ ${byName} disputed ${merchant}: “${reason}”`,
+      });
+      return { ...s, messages: nextMessages };
+    });
+    setDisputeTarget(null);
+  }
+
+  function resolveDispute(messageId, disputeId) {
+    setState((s) => {
+      const now = Date.now();
+      let merchant = 'the bill';
+      const nextMessages = s.messages.map((m) => {
+        if (m.id !== messageId || m.type !== 'split') return m;
+        merchant = m.merchant || 'the bill';
+        const disputes = (m.disputes || []).map((d) =>
+          d.id === disputeId ? { ...d, status: 'resolved' } : d
+        );
+        return { ...m, disputes };
+      });
+      nextMessages.push({
+        id: `sys_${now}`,
+        ts: now + 1,
+        type: 'text',
+        author: 'system',
+        text: `✅ Dispute on ${merchant} marked resolved.`,
+      });
+      return { ...s, messages: nextMessages };
+    });
+  }
+
   return (
     <div className="app">
       <Sidebar group={group} onOpenMembers={() => setMembersOpen(true)} />
@@ -174,6 +223,8 @@ export default function App() {
         onSendText={handleSendText}
         onPay={(req) => setUpiRequest(req)}
         onSettled={markSettled}
+        onDispute={(message) => setDisputeTarget(message)}
+        onResolveDispute={resolveDispute}
       />
 
       {membersOpen && (
@@ -210,6 +261,15 @@ export default function App() {
 
       {upiRequest && (
         <UpiModal request={upiRequest} onClose={() => setUpiRequest(null)} />
+      )}
+
+      {disputeTarget && (
+        <DisputeModal
+          message={disputeTarget}
+          members={group.members}
+          onSubmit={({ by, reason }) => addDispute(disputeTarget.id, by, reason)}
+          onClose={() => setDisputeTarget(null)}
+        />
       )}
     </div>
   );
