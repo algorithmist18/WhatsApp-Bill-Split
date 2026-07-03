@@ -16,11 +16,13 @@ it automatically, see clearly **who owes whom how much**, and settle up over
    **Restaurant** uses **real OCR** (Tesseract.js) to read the receipt; the other
    categories jump to a quick amount/items form. The category icon shows on the
    posted card, and any bill can be **edited** later from the card.
-3. **Split it** — two ways:
-   - **Split equally** across the whole group, or
+3. **Split it** — three ways:
+   - **Equally** across the whole group,
    - **Assign items** — tap chips per item, or use **🎤 voice**: say something
      like *“Pizza for Rahul, drinks split by everyone, biryani for Priya and
-     Sameer”* and the items get assigned automatically.
+     Sameer”* and the items get assigned automatically, or
+   - **By %** — give each person a custom percentage (sliders + inputs, with a
+     live check that they total 100%).
 4. **Who owes whom** — the split is posted into the chat as a card showing each
    person's share and exactly what they owe the payer.
 5. **Pay via UPI** — each debt has a **Pay via UPI** button that generates a real

@@ -6,6 +6,12 @@ function timeOf(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function modeLabel(mode) {
+  if (mode === 'itemized') return 'Split by items';
+  if (mode === 'percentage') return 'Split by %';
+  return 'Split equally';
+}
+
 // A rich "bill split" card posted into the chat.
 function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
   const [showItems, setShowItems] = useState(false);
@@ -19,7 +25,7 @@ function SplitCard({ message, membersById, onPay, onSettled, onEdit }) {
         <div>
           <div className="splitcard__merchant">{message.merchant || 'Bill'}</div>
           <div className="splitcard__sub">
-            {cat.label} · {message.mode === 'equal' ? 'Split equally' : 'Split by items'}
+            {cat.label} · {modeLabel(message.mode)}
             {message.edited ? ' · edited' : ''}
           </div>
         </div>

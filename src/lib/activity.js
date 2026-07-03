@@ -22,7 +22,9 @@ export function buildActivityLog(messages, settlements, members) {
       icon: cat.icon,
       amount: m.total,
       title: `${name(members, m.payerId)} paid ${m.merchant || cat.label}`,
-      subtitle: `${cat.label} · split ${m.mode === 'equal' ? 'equally' : 'by items'}`,
+      subtitle: `${cat.label} · split ${
+        m.mode === 'itemized' ? 'by items' : m.mode === 'percentage' ? 'by %' : 'equally'
+      }`,
     });
   }
 

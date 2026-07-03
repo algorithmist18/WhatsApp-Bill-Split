@@ -1,6 +1,12 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { runOcr, blankItem } from '../lib/ocr.js';
-import { computeShares, computeDebts, itemsTotal } from '../lib/split.js';
+import {
+  computeShares,
+  computeDebts,
+  itemsTotal,
+  equalPercents,
+  percentTotal,
+} from '../lib/split.js';
 import { inr, initials } from '../lib/format.js';
 import { CATEGORIES, getCategory } from '../lib/categories.js';
 import {
@@ -21,8 +27,11 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   const [items, setItems] = useState(() =>
     initial ? initial.items.map((it) => ({ ...it, assignedTo: [...(it.assignedTo || [])] })) : []
   );
-  const [mode, setMode] = useState(initial?.mode ?? 'equal'); // equal | itemized
+  const [mode, setMode] = useState(initial?.mode ?? 'equal'); // equal | itemized | percentage
   const [payerId, setPayerId] = useState(initial?.payerId ?? members[0]?.id ?? '');
+  const [percents, setPercents] = useState(
+    () => initial?.percents ?? equalPercents(members)
+  );
   const [progress, setProgress] = useState(0);
   const [ocrNote, setOcrNote] = useState('');
 
@@ -45,13 +54,20 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
 
   const total = useMemo(() => itemsTotal(items), [items]);
   const shares = useMemo(
-    () => computeShares({ mode, items, members }),
-    [mode, items, members]
+    () => computeShares({ mode, items, members, percents }),
+    [mode, items, members, percents]
   );
   const debts = useMemo(
     () => computeDebts({ shares, payerId, members }),
     [shares, payerId, members]
   );
+  const pctTotal = useMemo(() => percentTotal(percents, members), [percents, members]);
+  const pctValid = mode !== 'percentage' || Math.abs(pctTotal - 100) < 0.5;
+
+  function setPercent(id, value) {
+    const v = Math.max(0, Math.min(100, Number(value) || 0));
+    setPercents((p) => ({ ...p, [id]: v }));
+  }
 
   async function handleFile(file) {
     if (!file) return;
@@ -102,7 +118,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   }
 
   function post() {
-    if (items.length === 0 || total <= 0) return;
+    if (items.length === 0 || total <= 0 || !pctValid) return;
     onPost(
       {
         type: 'split',
@@ -112,6 +128,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
         mode,
         total,
         payerId,
+        percents: mode === 'percentage' ? { ...percents } : undefined,
         items: items.map((it) => ({ ...it })),
         shares: { ...shares },
         debts: debts.map((d) => ({ ...d, settled: false })),
@@ -194,6 +211,10 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
               removeItem={removeItem}
               addItem={addItem}
               toggleAssign={toggleAssign}
+              percents={percents}
+              setPercent={setPercent}
+              setPercents={setPercents}
+              pctTotal={pctTotal}
               applyVoice={(transcript) =>
                 setItems((its) => parseAssignments(transcript, its, members).items)
               }
@@ -212,7 +233,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
             <button
               className="btn btn--primary"
               onClick={post}
-              disabled={total <= 0 || members.length < 2}
+              disabled={total <= 0 || members.length < 2 || !pctValid}
             >
               {isEditing ? 'Update split' : 'Post split to chat'}
             </button>
@@ -276,6 +297,10 @@ function EditStage(props) {
     removeItem,
     addItem,
     toggleAssign,
+    percents,
+    setPercent,
+    setPercents,
+    pctTotal,
     applyVoice,
   } = props;
 
@@ -355,7 +380,7 @@ function EditStage(props) {
             className={`segmented__opt ${mode === 'equal' ? 'is-active' : ''}`}
             onClick={() => setMode('equal')}
           >
-            Split equally
+            Equally
           </button>
           <button
             className={`segmented__opt ${mode === 'itemized' ? 'is-active' : ''}`}
@@ -363,8 +388,26 @@ function EditStage(props) {
           >
             Assign items
           </button>
+          <button
+            className={`segmented__opt ${mode === 'percentage' ? 'is-active' : ''}`}
+            onClick={() => setMode('percentage')}
+          >
+            By %
+          </button>
         </div>
       </div>
+
+      {mode === 'percentage' && (
+        <PercentAssign
+          members={members}
+          percents={percents}
+          setPercent={setPercent}
+          setPercents={setPercents}
+          pctTotal={pctTotal}
+          total={total}
+          shares={shares}
+        />
+      )}
 
       {mode === 'itemized' && (
         <ItemizedAssign
@@ -405,6 +448,62 @@ function EditStage(props) {
         <div className="summary__total">
           Bill total <strong>{inr(total)}</strong>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PercentAssign({ members, percents, setPercent, setPercents, pctTotal, total, shares }) {
+  const remaining = Math.round((100 - pctTotal) * 100) / 100;
+  const off = Math.abs(remaining) >= 0.5;
+  return (
+    <div className="assign">
+      <div className="assign__voice">
+        <span className="assign__hint">Set each person's percentage of the bill.</span>
+        <button className="btn btn--ghost btn--sm" onClick={() => setPercents(equalPercents(members))}>
+          Reset to equal
+        </button>
+      </div>
+
+      <div className="pctlist">
+        {members.map((m) => (
+          <div key={m.id} className="pctrow">
+            <div className="avatar avatar--xs">{initials(m.name)}</div>
+            <span className="pctrow__name">{m.name.split(' ')[0]}</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={percents[m.id] || 0}
+              onChange={(e) => setPercent(m.id, e.target.value)}
+              className="pctrow__slider"
+            />
+            <div className="pctrow__num">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={percents[m.id] ?? 0}
+                onChange={(e) => setPercent(m.id, e.target.value)}
+                className="input"
+              />
+              <span>%</span>
+            </div>
+            <span className="pctrow__amt">{inr(shares[m.id] || 0)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className={`pcttotal ${off ? 'pcttotal--off' : 'pcttotal--ok'}`}>
+        {off ? (
+          <span>
+            {pctTotal}% assigned — {remaining > 0 ? `${remaining}% left` : `${-remaining}% over`}.
+            Must total 100%.
+          </span>
+        ) : (
+          <span>✓ 100% assigned</span>
+        )}
       </div>
     </div>
   );

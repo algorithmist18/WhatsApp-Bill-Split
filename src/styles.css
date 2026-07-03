@@ -941,6 +941,64 @@ button {
   margin: 10px 0 0;
 }
 
+/* ---------- Percentage split ---------- */
+.pctlist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.pctrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pctrow__name {
+  width: 60px;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.pctrow__slider {
+  flex: 1;
+  accent-color: var(--wa-green);
+  min-width: 60px;
+}
+.pctrow__num {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.pctrow__num .input {
+  width: 58px;
+  padding: 6px 8px;
+  text-align: right;
+}
+.pctrow__amt {
+  width: 74px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.pcttotal {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+.pcttotal--ok {
+  background: #e7f6f1;
+  color: var(--wa-green-dark);
+}
+.pcttotal--off {
+  background: #fff3f0;
+  color: #c0392b;
+}
+
 /* ---------- Summary ---------- */
 .summary {
   margin-top: 18px;
