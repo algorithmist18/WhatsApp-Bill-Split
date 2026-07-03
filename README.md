@@ -12,10 +12,14 @@ it automatically, see clearly **who owes whom how much**, and settle up over
 1. **Group + members** — one WhatsApp-style group; add/edit/remove people, each
    with a name and a UPI id (`name@bank`). Tap the group header to manage them.
 2. **Add an expense** — hit 📎 / **Split a bill** and pick a category:
-   🍽️ Restaurant, 🚕 Taxi ride, 🏠 Rent, 🛒 Blinkit, 📦 E-commerce, or ➕ Other.
-   **Restaurant** uses **real OCR** (Tesseract.js) to read the receipt; the other
-   categories jump to a quick amount/items form. The category icon shows on the
-   posted card, and any bill can be **edited** later from the card.
+   🍽️ Restaurant, 🛒 Blinkit, 🏪 Instamart, 📦 Amazon, 🚕 Taxi, 🏠 Rent,
+   🛍️ E-commerce, or ➕ Other. **Restaurant** reads a receipt photo with **real
+   OCR** (Tesseract.js); **Blinkit / Instamart / Amazon** let you **forward an
+   order screenshot** and use provider-tuned parsing (their line-item and
+   "grand total" formats, with delivery/handling/taxes reconciled into a single
+   line so the split still matches what you were charged). Other categories jump
+   to a quick amount/items form. The category icon shows on the posted card, and
+   any bill can be **edited** later from the card.
 3. **Split it** — three ways:
    - **Equally** across the whole group,
    - **Assign items** — tap chips per item, or use **🎤 voice**: say something

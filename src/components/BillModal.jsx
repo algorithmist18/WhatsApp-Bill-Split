@@ -79,7 +79,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
     setProgress(0);
     setOcrNote('');
     try {
-      const result = await runOcr(file, setProgress);
+      const result = await runOcr(file, { onProgress: setProgress, provider: cat.provider });
       setMerchant(result.merchant);
       if (result.items.length > 0) {
         setItems(result.items);
@@ -89,7 +89,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
       }
     } catch (err) {
       console.warn('OCR failed:', err);
-      setMerchant('Receipt');
+      setMerchant(cat.label);
       setItems([blankItem()]);
       setOcrNote('OCR failed to run — enter the items manually.');
     }
@@ -168,6 +168,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
 
           {stage === 'upload' && (
             <UploadStage
+              category={cat}
               onPick={() => fileInputRef.current?.click()}
               inputRef={fileInputRef}
               onFile={handleFile}
@@ -177,7 +178,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
           {stage === 'scanning' && (
             <div className="scanning">
               <div className="scanning__spinner" />
-              <p>Reading receipt…</p>
+              <p>{cat.provider ? 'Reading your order…' : 'Reading receipt…'}</p>
               <div className="scanning__bar">
                 <div
                   className="scanning__barfill"
@@ -244,8 +245,9 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   );
 }
 
-function UploadStage({ onPick, inputRef, onFile }) {
+function UploadStage({ category, onPick, inputRef, onFile }) {
   const [dragOver, setDragOver] = useState(false);
+  const isOrder = !!category?.provider;
   return (
     <div
       className={`dropzone ${dragOver ? 'dropzone--over' : ''}`}
@@ -261,10 +263,18 @@ function UploadStage({ onPick, inputRef, onFile }) {
         onFile(e.dataTransfer.files?.[0]);
       }}
     >
-      <div className="dropzone__icon">🧾</div>
-      <p className="dropzone__title">Upload a photo of the bill</p>
+      <div className="dropzone__icon">{isOrder ? category.icon : '🧾'}</div>
+      <p className="dropzone__title">
+        {isOrder
+          ? `Forward your ${category.label} order screenshot`
+          : 'Upload a photo of the bill'}
+      </p>
       <p className="dropzone__hint">Tap to choose an image, or drag &amp; drop it here</p>
-      <span className="dropzone__ocr">We'll read the items automatically with OCR</span>
+      <span className="dropzone__ocr">
+        {isOrder
+          ? `We'll read your ${category.label} order automatically`
+          : "We'll read the items automatically with OCR"}
+      </span>
       <input
         ref={inputRef}
         type="file"

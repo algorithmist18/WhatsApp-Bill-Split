@@ -5,6 +5,7 @@
 // receipts vary wildly, so everything is editable afterwards in the bill modal.
 
 import { createWorker, PSM } from 'tesseract.js';
+import { round2 } from './format.js';
 
 let seq = 0;
 function makeId() {
@@ -69,6 +70,90 @@ export function parseReceipt(text) {
   return items;
 }
 
+// ---- Forwarded order screenshots (Blinkit / Instamart / Amazon) ----
+//
+// These are digital order summaries, so parsing is tuned per provider: known
+// display names, provider-specific noise to skip, and the "order total" line to
+// reconcile against. Any gap between the summed items and the detected total
+// (delivery, handling, taxes) is captured as a single "Taxes & delivery" line
+// so the split still adds up to what was actually charged.
+
+const PROVIDER_NAME = { blinkit: 'Blinkit', instamart: 'Instamart', amazon: 'Amazon' };
+
+const PROVIDER_SKIP = {
+  blinkit:
+    /\b(handling|delivery|feeding india|donation|tip|mrp|you saved|savings?|cart|item total|bill total|grand total|to pay|gst|charges?)\b/i,
+  instamart:
+    /\b(handling|delivery|tip|gst|item total|grand total|to pay|savings?|mrp|cart|small cart|charges?|taxes?)\b/i,
+  amazon:
+    /\b(delivery|shipping|order total|grand total|sold by|qty|quantity|gst|cess|you saved|savings?|subtotal|mrp|deal|promotion|coupon|packaging)\b/i,
+};
+
+const PROVIDER_TOTAL = {
+  blinkit: /\b(?:grand total|bill total|to pay|total\s*bill)\b\D*([\d,]+(?:\.\d{2})?)/i,
+  instamart: /\b(?:grand total|to pay|total)\b\D*([\d,]+(?:\.\d{2})?)/i,
+  amazon: /\b(?:order total|grand total)\b\D*([\d,]+(?:\.\d{2})?)/i,
+};
+
+// Strip a leading quantity like "2 x ", "2x", "3 X" or "Qty 2" from an item name.
+function stripQty(name) {
+  return name
+    .replace(/^\s*(?:qty\.?\s*)?\d{1,2}\s*[xX×*]\s*/, '')
+    .replace(/\s*[xX×*]\s*\d{1,2}\s*$/, '')
+    .trim();
+}
+
+function detectOrderTotal(text, provider) {
+  const re = PROVIDER_TOTAL[provider];
+  if (!re) return null;
+  const m = text.match(re);
+  if (!m) return null;
+  const val = toNumber(m[1]);
+  return isFinite(val) && val > 0 ? round2(val) : null;
+}
+
+export function parseOrder(text, provider) {
+  const skip = PROVIDER_SKIP[provider];
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const items = [];
+  for (const line of lines) {
+    if (SKIP_RE.test(line) || (skip && skip.test(line))) continue;
+    const m = line.match(PRICE_STRICT) || line.match(PRICE_LOOSE);
+    if (!m) continue;
+    const name = stripQty(m[1].replace(/[.:_·—-]+$/, '').replace(/\s{2,}/g, ' ').trim());
+    const price = toNumber(m[2]);
+    if (!name || name.replace(/[^a-z]/gi, '').length < 2) continue;
+    if (!isFinite(price) || price <= 0 || price > 100000) continue;
+    items.push({ id: makeId(), name: titleCase(name), price, assignedTo: [] });
+  }
+
+  // Reconcile to the order total so delivery/handling/taxes aren't lost.
+  const orderTotal = detectOrderTotal(text, provider);
+  const sum = round2(items.reduce((s, it) => s + it.price, 0));
+  if (orderTotal) {
+    if (items.length === 0) {
+      items.push({
+        id: makeId(),
+        name: `${PROVIDER_NAME[provider] || 'Order'} order`,
+        price: orderTotal,
+        assignedTo: [],
+      });
+    } else if (orderTotal - sum > 1) {
+      items.push({
+        id: makeId(),
+        name: 'Taxes & delivery',
+        price: round2(orderTotal - sum),
+        assignedTo: [],
+      });
+    }
+  }
+  return items;
+}
+
 export function guessMerchant(text) {
   const lines = text
     .split(/\r?\n/)
@@ -124,8 +209,10 @@ async function fileToImageSource(file, maxDim = 1800) {
   }
 }
 
-// Runs OCR on a File/Blob. onProgress(0..1) fires during recognition.
-export async function runOcr(file, onProgress) {
+// Runs OCR on a File/Blob. Pass a `provider` (blinkit/instamart/amazon) to use
+// the tailored order parser; otherwise the generic receipt parser is used.
+// onProgress(0..1) fires during recognition.
+export async function runOcr(file, { onProgress, provider } = {}) {
   const source = await fileToImageSource(file);
   const worker = await createWorker('eng', 1, {
     logger: (m) => {
@@ -135,9 +222,16 @@ export async function runOcr(file, onProgress) {
     },
   });
   try {
-    // A receipt is a single column/block of text — this beats the default mode.
+    // A receipt/order is a single column/block of text — beats the default mode.
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK });
     const { data } = await worker.recognize(source);
+    if (provider) {
+      return {
+        merchant: PROVIDER_NAME[provider] || guessMerchant(data.text),
+        items: parseOrder(data.text, provider),
+        raw: data.text,
+      };
+    }
     return {
       merchant: guessMerchant(data.text),
       items: parseReceipt(data.text),
