@@ -8,7 +8,7 @@ import {
   percentTotal,
 } from '../lib/split.js';
 import { inr, initials } from '../lib/format.js';
-import { CATEGORIES, getCategory } from '../lib/categories.js';
+import { getCategory } from '../lib/categories.js';
 import {
   isVoiceSupported,
   createRecognizer,
@@ -17,9 +17,10 @@ import {
 
 export default function BillModal({ members, onClose, onPost, initial = null }) {
   const isEditing = !!initial;
-  // New bills start at category selection; editing jumps straight to the edit
-  // stage prefilled with the bill's items, split mode and payer.
-  const [stage, setStage] = useState(isEditing ? 'edit' : 'category');
+  // Only Restaurant is offered right now, so new bills skip category selection
+  // and go straight to the receipt upload; editing jumps to the edit stage
+  // prefilled with the bill's items, split mode and payer.
+  const [stage, setStage] = useState(isEditing ? 'edit' : 'upload');
   const [category, setCategory] = useState(initial?.category ?? 'restaurant');
   const [merchant, setMerchant] = useState(initial?.merchant ?? '');
   const [fileName, setFileName] = useState('');
@@ -36,19 +37,6 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   const [ocrNote, setOcrNote] = useState('');
 
   const cat = getCategory(category);
-
-  // Pick a category: restaurants go through OCR, everything else jumps to a
-  // quick manual amount/items form.
-  function chooseCategory(c) {
-    setCategory(c.id);
-    if (c.ocr) {
-      setStage('upload');
-    } else {
-      setMerchant('');
-      setItems([blankItem()]);
-      setStage('edit');
-    }
-  }
 
   const fileInputRef = useRef(null);
 
@@ -163,24 +151,6 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
         </header>
 
         <div className="modal__body">
-          {stage === 'category' && (
-            <div className="catpick">
-              <p className="catpick__label">What kind of expense is this?</p>
-              <div className="catpick__grid">
-                {CATEGORIES.map((c) => (
-                  <button
-                    key={c.id}
-                    className="catpick__opt"
-                    onClick={() => chooseCategory(c)}
-                  >
-                    <span className="catpick__icon">{c.icon}</span>
-                    <span className="catpick__name">{c.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {stage === 'upload' && (
             <UploadStage
               category={cat}
