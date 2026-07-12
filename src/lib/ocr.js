@@ -89,25 +89,24 @@ const PROVIDER_SKIP = {
     /\b(delivery|shipping|order total|grand total|sold by|qty|quantity|gst|cess|you saved|savings?|subtotal|mrp|deal|promotion|coupon|packaging)\b/i,
 };
 
-// One money token, optionally currency-prefixed: "₹377", "1,250.50", "0".
-const AMOUNT = /(?:₹|rs\.?|inr|\$)?\s*(\d[\d,]*(?:[.,]\d{2})?)/gi;
+// Real OCR of app order screenshots is messy: the ₹ glyph is misread as a
+// letter/symbol/digit ("₹377" -> "X377", "₹499" -> "3499", "₹0" -> "%0"), and
+// the item name, quantity and price land on separate lines. So we classify each
+// line and pull the price from its numbers rather than trusting a ₹ symbol.
+//
+// Key rule: on a price cell the LAST number is the actual charged price — a
+// struck-through MRP always comes before it ("3499 X377" -> 377).
 
-// A trailing run of 1–3 money tokens at the end of a line. Captures both a
-// price cell on its own ("₹499 ₹377") and a "Name … ₹499 ₹377" line, so we can
-// split the name from the price region.
-const TRAIL_PRICE =
-  /((?:(?:₹|rs\.?|inr|\$)\s*)?\d[\d,]*(?:[.,]\d{2})?(?:\s+(?:(?:₹|rs\.?|inr|\$)\s*)?\d[\d,]*(?:[.,]\d{2})?){0,2})\s*$/i;
-
-// A quantity / unit line that sits between an item name and its price in app
-// screenshots, e.g. "500 ml", "1 unit", "2 x", "250 g", "1 pc x 1".
+// A quantity / unit line: "15 g x 1", "400 ml x 1", "1 pc x 1" and their
+// space-mangled OCR forms "15gx1", "l1pcx1". Either ends with a small "x N"
+// multiplier, or is a short number+unit token.
 const QTY_LINE =
-  /^\s*(?:qty\.?\s*)?\d+\s*(?:x|×|unit|units|pcs?|pieces?|nos?|ml|l|ltr|litre|g|gm|gms|kg|pack|packs?|combo|sachet)\b/i;
+  /(?:x\s*\d{1,2}\s*$)|(?:(?:^|\s)[a-z]?\d{1,4}\s*(?:ml|gms?|gm|g|kgs?|kg|mg|ltr|l|pcs?|pc|nos?|units?|packs?|sachets?|combo)\b)/i;
 
 // Keywords that mark the order's grand total (not item/sub totals).
 const TOTAL_LINE = /\b(grand total|bill total|order total|total amount|amount payable|to pay|net payable|total)\b/i;
 const NOT_TOTAL = /\b(item|sub|mrp|saved|saving)\b/i;
 
-// Strip a leading quantity like "2 x ", "2x", "3 X" or "Qty 2" from an item name.
 function stripQty(name) {
   return name
     .replace(/^\s*(?:qty\.?\s*)?\d{1,2}\s*[xX×*]\s*/, '')
@@ -116,7 +115,7 @@ function stripQty(name) {
 }
 
 function cleanName(raw) {
-  return stripQty(raw.replace(/[.:_·—-]+$/, '').replace(/\s{2,}/g, ' ').trim());
+  return stripQty(raw.replace(/[.:_·—\-]+$/, '').replace(/\s{2,}/g, ' ').trim());
 }
 
 function validName(name) {
@@ -124,59 +123,57 @@ function validName(name) {
 }
 
 function validPrice(price) {
-  return isFinite(price) && price > 0 && price <= 100000;
+  return isFinite(price) && price >= 0 && price <= 100000;
 }
 
-// Collect the money tokens in a string with whether each had a currency symbol
-// or decimals (a strong signal it's really a price, not a stray number).
-function amountsIn(str) {
-  const out = [];
-  let m;
-  AMOUNT.lastIndex = 0;
-  while ((m = AMOUNT.exec(str))) {
-    out.push({ value: toNumber(m[1]), currency: /₹|rs|inr|\$/i.test(m[0]), dec: /[.,]\d{2}$/.test(m[1]) });
-  }
-  return out;
+function alphaCount(s) {
+  return (s.match(/[a-z]/gi) || []).length;
 }
 
-// Split a line into { name, price, strong } using its trailing price region.
-// price is the LAST amount (the actual charged price when a struck-through MRP
-// precedes it). `strong` is true when the region clearly reads as money.
-function analyzePrice(line) {
-  const m = line.match(TRAIL_PRICE);
+// Numbers in a string, e.g. "3499 X377" -> [3499, 377]; "1,250.50" -> [1250.50].
+function numbersIn(s) {
+  return (s.match(/\d[\d,]*(?:[.,]\d{2})?/g) || []).map(toNumber).filter((n) => isFinite(n));
+}
+
+function looksLikeQty(line) {
+  return QTY_LINE.test(line) && alphaCount(line) <= 6;
+}
+
+// Peel a trailing price off a name line, e.g. "Dove … Hair Mask + X0" or
+// "Adidas … Gel 3499 X377". The trailing tokens must look like a garbled price
+// (a stray currency-ish char before a number, or two numbers) so we don't grab
+// a number that's genuinely part of the name.
+function peelTrailingPrice(line) {
+  const m = line.match(/((?:\s+[^\w\s]{0,2}\s*[a-z]?\s*\d[\d,]*(?:[.,]\d{2})?){1,3})\s*$/i);
   if (!m) return null;
   const region = m[1];
-  const name = line.slice(0, line.length - m[0].length).trim();
-  const amts = amountsIn(region);
-  if (amts.length === 0) return null;
-  const price = amts[amts.length - 1].value;
-  const strong = amts.length >= 2 || amts.some((a) => a.currency || a.dec);
-  return { name, price, strong };
+  const nums = numbersIn(region);
+  if (nums.length === 0) return null;
+  const garbled = /[^\d\s.,]/.test(region); // a non-number char sits in the region
+  if (!garbled && nums.length < 2) return null;
+  return { name: line.slice(0, line.length - m[0].length).trim(), price: nums[nums.length - 1] };
 }
 
-// Find the order's grand total. App screenshots often put the amount on the
-// line after the "Grand total" label, so we scan same-line then the next two
-// lines, and keep the largest total-ish amount we see.
+// Find the order's grand total. The amount is often on the line after the
+// label, so scan same-line then the next two lines; keep the largest.
 function detectOrderTotal(lines) {
   let best = null;
   for (let i = 0; i < lines.length; i += 1) {
     if (!TOTAL_LINE.test(lines[i]) || NOT_TOTAL.test(lines[i])) continue;
     let amt = null;
     for (let j = 0; j <= 2 && i + j < lines.length; j += 1) {
-      const info = analyzePrice(lines[i + j]);
-      if (info && (j === 0 || !validName(info.name))) {
-        amt = info.price;
+      const nums = numbersIn(lines[i + j]);
+      if (nums.length && (j === 0 || alphaCount(lines[i + j]) <= 2)) {
+        amt = nums[nums.length - 1];
         break;
       }
     }
-    if (amt !== null && validPrice(amt) && (best === null || amt > best)) best = round2(amt);
+    if (amt !== null && amt > 0 && amt <= 100000 && (best === null || amt > best)) best = round2(amt);
   }
   return best;
 }
 
-// Parse a forwarded order screenshot. Handles "Name … ₹MRP ₹price" on one line
-// and the common app layout where the name, quantity and price cell land on
-// separate OCR lines (taking the actual price, not the struck-through MRP).
+// Parse a forwarded order screenshot into line items.
 export function parseOrder(text, provider) {
   const skip = PROVIDER_SKIP[provider];
   const lines = text
@@ -189,54 +186,51 @@ export function parseOrder(text, provider) {
   let skipNextPrice = false; // a fee/total line just passed — ignore its amount
 
   const push = (name, price) => {
-    items.push({ id: makeId(), name: titleCase(name), price, assignedTo: [] });
+    items.push({ id: makeId(), name: titleCase(name), price: round2(price), assignedTo: [] });
   };
 
   for (const line of lines) {
-    const isSkip = SKIP_RE.test(line) || (skip && skip.test(line));
-    const info = analyzePrice(line);
-
     // A fee / total label line — drop any pending name and swallow the amount
-    // that follows it (whether inline or on the next line).
-    if (isSkip) {
+    // that follows it (inline or on the next line).
+    if (SKIP_RE.test(line) || (skip && skip.test(line))) {
       pendingName = null;
       skipNextPrice = true;
       continue;
     }
 
-    if (info) {
-      const hasName = validName(info.name);
-      if (hasName && info.strong) {
-        // "Name … ₹MRP ₹price" on one line.
-        push(cleanName(info.name), info.price);
+    // A quantity/unit line — keep the pending name, skip it.
+    if (looksLikeQty(line)) continue;
+
+    const alpha = alphaCount(line);
+    const nums = numbersIn(line);
+
+    // A price cell (few/no letters, has numbers) — belongs to the pending item.
+    if (alpha <= 2 && nums.length >= 1) {
+      const price = nums[nums.length - 1];
+      if (skipNextPrice) {
+        skipNextPrice = false;
+        pendingName = null;
+      } else if (pendingName && validPrice(price)) {
+        push(pendingName, price);
+        pendingName = null;
+      }
+      continue;
+    }
+
+    // An item name (possibly with the price appended on the same line).
+    if (alpha >= 3) {
+      const peeled = peelTrailingPrice(line);
+      if (peeled && validName(peeled.name) && validPrice(peeled.price)) {
+        push(cleanName(peeled.name), peeled.price);
         pendingName = null;
         skipNextPrice = false;
         continue;
       }
-      if (!hasName) {
-        // A standalone price cell — belongs to the pending item.
-        if (skipNextPrice) {
-          skipNextPrice = false;
-          pendingName = null;
-        } else if (pendingName && info.price >= 0 && info.price <= 100000) {
-          push(pendingName, round2(info.price));
-          pendingName = null;
-        }
-        continue;
+      const nm = cleanName(line);
+      if (validName(nm)) {
+        pendingName = nm; // a fresh item name — last one wins
+        skipNextPrice = false;
       }
-      // hasName but weak trailing number (a bare quantity in the name) — fall
-      // through and treat the whole line as a name.
-    }
-
-    // A quantity/unit line — keep the pending name, skip.
-    if (QTY_LINE.test(line)) continue;
-
-    // Otherwise it's an item name. A fresh name means a new item, so a stale
-    // "skip the next price" no longer applies.
-    const nm = cleanName(line);
-    if (validName(nm)) {
-      pendingName = nm;
-      skipNextPrice = false;
     }
   }
 
@@ -308,12 +302,28 @@ async function fileToImageSource(file, maxDim = 1800) {
   }
 }
 
+// Tesseract's worker, wasm core and language data are self-hosted under
+// /tesseract (see public/tesseract) so OCR never depends on a CDN at runtime —
+// that dependency is what made scanning hang. Passing a corePath ending in
+// ".js" tells tesseract.js to use exactly that build and skip CDN feature
+// detection.
+function tesseractPaths() {
+  const base = import.meta.env.BASE_URL || '/';
+  const dir = `${base.replace(/\/$/, '')}/tesseract/`;
+  return {
+    workerPath: `${dir}worker.min.js`,
+    corePath: `${dir}tesseract-core-simd-lstm.wasm.js`,
+    langPath: dir,
+  };
+}
+
 // Runs OCR on a File/Blob. Pass a `provider` (blinkit/instamart/amazon) to use
 // the tailored order parser; otherwise the generic receipt parser is used.
 // onProgress(0..1) fires during recognition.
 export async function runOcr(file, { onProgress, provider } = {}) {
   const source = await fileToImageSource(file);
   const worker = await createWorker('eng', 1, {
+    ...tesseractPaths(),
     logger: (m) => {
       if (m.status === 'recognizing text' && typeof m.progress === 'number') {
         onProgress?.(m.progress);

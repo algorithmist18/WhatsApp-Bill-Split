@@ -72,10 +72,14 @@ npm run preview
 
 ## Notes & limitations
 
-- **OCR is real but best-effort** — Tesseract.js reads the receipt text in the
-  browser and a heuristic parser pulls out `name … price` lines (skipping
-  totals/tax/payment rows). Receipts vary a lot, so always review/edit the items;
-  the first recognition also downloads the English language data (~a few MB).
+- **OCR is real but best-effort** — Tesseract.js reads the receipt/order text in
+  the browser and a heuristic parser pulls out the line items. The Tesseract
+  worker, wasm core and English data are **self-hosted** under
+  `public/tesseract/` (≈9 MB), so scanning works without any CDN. Order
+  screenshots are messy — OCR often mangles the `₹` glyph and splits a line into
+  name/quantity/price rows — so the order parser matches on numbers (taking the
+  actual price after any struck-through MRP) rather than the `₹` symbol. Results
+  vary by screenshot; always review/edit the items.
 - **Voice** needs a browser that supports the Web Speech API (Chrome/Edge). The
   chip UI is always available as a fallback.
 - **UPI** links are standards-compliant but only do something on a device with a
