@@ -13,22 +13,19 @@ it automatically, see clearly **who owes whom how much**, and settle up over
    with a name and a UPI id (`name@bank`). Tap the group header to manage them.
 2. **Add an expense** — hit 📎 / **Split a bill** and pick a category:
    🍽️ Restaurant, 🛒 Blinkit, 🏪 Instamart, 📦 Amazon, 🚕 Taxi, 🏠 Rent,
-   🛍️ E-commerce, or ➕ Other. For image categories you can **read the bill two
-   ways**:
-   - **AI reading (recommended)** — with an Anthropic API key set (⚙️ → *Read
-     bills with AI*), the uploaded receipt/order screenshot is read by **Claude
-     vision** (`claude-opus-4-8`), which handles messy app screenshots (struck
-     MRPs, free items, odd layouts) far better than OCR and returns clean items.
-   - **On-device OCR (fallback)** — with no key, **Tesseract.js** runs locally
-     (self-hosted, no CDN) with provider-tuned parsing for Blinkit / Instamart /
-     Amazon order screenshots.
+   🛍️ E-commerce, or ➕ Other. For image categories you can read the bill two
+   ways — **no account or API key required**, everything runs on your device:
+   - **Upload / forward a screenshot** — **Tesseract.js** OCR runs locally
+     (self-hosted, no CDN). The image is upscaled, grayscaled and **binarized**
+     (Otsu threshold) for a clean read, then a provider-tuned parser extracts the
+     items (Blinkit / Instamart / Amazon formats, actual price vs struck MRP,
+     delivery/taxes reconciled to the total).
+   - **Paste the order text (most reliable)** — copy the item list from the app
+     or the order/confirmation email and paste it; it's parsed directly with no
+     OCR guessing.
 
    Other categories jump to a quick amount/items form. The category icon shows on
    the posted card, and any bill can be **edited** later from the card.
-
-   > The API key is stored only in your browser (localStorage) and used to call
-   > Anthropic directly from your device — fine for a personal prototype on your
-   > own machine; don't ship the app with a key baked in.
 3. **Split it** — three ways:
    - **Equally** across the whole group,
    - **Assign items** — tap chips per item, or use **🎤 voice**: say something
@@ -81,14 +78,15 @@ npm run preview
 
 ## Notes & limitations
 
-- **OCR is real but best-effort** — Tesseract.js reads the receipt/order text in
-  the browser and a heuristic parser pulls out the line items. The Tesseract
-  worker, wasm core and English data are **self-hosted** under
-  `public/tesseract/` (≈9 MB), so scanning works without any CDN. Order
-  screenshots are messy — OCR often mangles the `₹` glyph and splits a line into
-  name/quantity/price rows — so the order parser matches on numbers (taking the
-  actual price after any struck-through MRP) rather than the `₹` symbol. Results
-  vary by screenshot; always review/edit the items.
+- **OCR is on-device and best-effort** — Tesseract.js reads the image in the
+  browser (upscaled, grayscaled, Otsu-binarized) and a heuristic parser pulls out
+  the line items. The Tesseract worker, wasm core and English data are
+  **self-hosted** under `public/tesseract/` (≈9 MB), so it needs **no CDN, no
+  account and no API key**. App screenshots are still messy — OCR can mangle the
+  `₹` glyph and split a line into name/quantity/price rows — so the parser matches
+  on numbers (taking the actual price after any struck-through MRP) rather than
+  the `₹` symbol. Results vary by screenshot, so always review/edit the items —
+  or use **Paste the order text** for an exact, OCR-free read.
 - **Voice** needs a browser that supports the Web Speech API (Chrome/Edge). The
   chip UI is always available as a fallback.
 - **UPI** links are standards-compliant but only do something on a device with a
@@ -110,10 +108,8 @@ src/
     UpiModal.jsx          UPI deep link + QR
     SettleUpModal.jsx     group balances + minimal payments + activity log
     DisputeModal.jsx      raise a dispute on a bill (who + reason)
-    SettingsModal.jsx     AI reading toggle + Anthropic API key
   lib/
-    aiVision.js           Claude vision bill reading (Anthropic SDK)
-    ocr.js                Tesseract.js OCR + receipt parsing (fallback)
+    ocr.js                Tesseract.js OCR (upscale + Otsu binarize) + parsing
     categories.js         expense categories (restaurant/taxi/rent/…)
     split.js              per-bill share + debt calculation
     balances.js           group balances + minimum-cash-flow settle-up

@@ -174,58 +174,39 @@ button {
   font-size: 13.5px;
   white-space: nowrap;
 }
-.chat__gear {
-  border: none;
-  background: transparent;
-  font-size: 20px;
-  padding: 4px;
-  line-height: 1;
+/* ---------- Paste order text ---------- */
+.paste__link {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  border: 1px solid var(--wa-border);
+  background: #f7f8fa;
+  color: var(--wa-green-dark);
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
 }
-
-/* ---------- Settings modal ---------- */
-.settings__toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  cursor: pointer;
+.paste__title {
+  font-weight: 700;
+  margin: 0 0 4px;
 }
-.settings__toggle input {
-  margin-top: 3px;
-  width: 18px;
-  height: 18px;
-  accent-color: var(--wa-green);
-}
-.settings__toggle > span {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-.settings__hint {
+.paste__hint {
   font-size: 12.5px;
   color: var(--wa-muted);
-  font-weight: 400;
+  margin: 0 0 10px;
 }
-.settings__keyrow {
-  display: flex;
-  gap: 8px;
-}
-.settings__warn {
-  color: #c0392b;
-  font-size: 12px;
-  margin-top: 4px;
-}
-.settings__notice {
-  margin-top: 16px;
-  background: #f1faf7;
-  border: 1px solid #cdeee2;
-  border-radius: 10px;
-  padding: 12px;
-  font-size: 12.5px;
-  color: #2d5c4d;
+.paste__box {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
   line-height: 1.5;
 }
-.settings__mono {
-  font-family: monospace;
+.paste__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .chat__headtext {

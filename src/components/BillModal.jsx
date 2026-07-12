@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { runOcr, blankItem } from '../lib/ocr.js';
-import { readImageWithAI } from '../lib/aiVision.js';
+import { runOcr, blankItem, parseReceipt, parseOrder } from '../lib/ocr.js';
 import {
   computeShares,
   computeDebts,
@@ -16,9 +15,8 @@ import {
   parseAssignments,
 } from '../lib/voice.js';
 
-export default function BillModal({ members, onClose, onPost, initial = null, ai = {} }) {
+export default function BillModal({ members, onClose, onPost, initial = null }) {
   const isEditing = !!initial;
-  const useAI = !!(ai.enabled && ai.key);
   // New bills start at category selection; editing jumps straight to the edit
   // stage prefilled with the bill's items, split mode and payer.
   const [stage, setStage] = useState(isEditing ? 'edit' : 'category');
@@ -36,7 +34,6 @@ export default function BillModal({ members, onClose, onPost, initial = null, ai
   );
   const [progress, setProgress] = useState(0);
   const [ocrNote, setOcrNote] = useState('');
-  const [aiMode, setAiMode] = useState(false);
 
   const cat = getCategory(category);
 
@@ -81,33 +78,6 @@ export default function BillModal({ members, onClose, onPost, initial = null, ai
     setStage('scanning');
     setProgress(0);
     setOcrNote('');
-    setAiMode(useAI);
-
-    // Preferred path: Claude vision (accurate on messy app screenshots).
-    if (useAI) {
-      try {
-        const result = await readImageWithAI(file, {
-          apiKey: ai.key,
-          provider: cat.provider,
-          category,
-        });
-        setMerchant(result.merchant || cat.label);
-        if (result.items.length > 0) {
-          setItems(result.items);
-        } else {
-          setItems([blankItem()]);
-          setOcrNote('AI read the image but found no items — add them below.');
-        }
-        setStage('edit');
-        return;
-      } catch (err) {
-        console.warn('AI read failed, falling back to OCR:', err);
-        setOcrNote(`AI read failed (${err?.message || 'error'}). Falling back to OCR…`);
-        setAiMode(false);
-      }
-    }
-
-    // Fallback: on-device OCR.
     try {
       const result = await runOcr(file, { onProgress: setProgress, provider: cat.provider });
       setMerchant(result.merchant);
@@ -123,6 +93,21 @@ export default function BillModal({ members, onClose, onPost, initial = null, ai
       setItems([blankItem()]);
       setOcrNote('Reading failed — enter the items manually.');
     }
+    setStage('edit');
+  }
+
+  // Reliable, OCR-free path: the user pastes the order/receipt text (from the
+  // app or a confirmation email) and we parse it directly.
+  function handlePastedText(text) {
+    const items = cat.provider ? parseOrder(text, cat.provider) : parseReceipt(text);
+    if (items.length > 0) {
+      setItems(items);
+      setOcrNote('');
+    } else {
+      setItems([blankItem()]);
+      setOcrNote("Couldn't find items in that text — add them below.");
+    }
+    setMerchant(cat.provider ? cat.label : '');
     setStage('edit');
   }
 
@@ -199,35 +184,26 @@ export default function BillModal({ members, onClose, onPost, initial = null, ai
           {stage === 'upload' && (
             <UploadStage
               category={cat}
-              useAI={useAI}
               onPick={() => fileInputRef.current?.click()}
               inputRef={fileInputRef}
               onFile={handleFile}
+              onPasteText={(text) => handlePastedText(text)}
             />
           )}
 
           {stage === 'scanning' && (
             <div className="scanning">
               <div className="scanning__spinner" />
-              {aiMode ? (
-                <>
-                  <p>Reading with AI ✨</p>
-                  <span className="scanning__hint">Claude is reading your image…</span>
-                </>
-              ) : (
-                <>
-                  <p>{cat.provider ? 'Reading your order…' : 'Reading receipt…'}</p>
-                  <div className="scanning__bar">
-                    <div
-                      className="scanning__barfill"
-                      style={{ width: `${Math.round(progress * 100)}%` }}
-                    />
-                  </div>
-                  <span className="scanning__hint">
-                    Recognising text with OCR · {Math.round(progress * 100)}%
-                  </span>
-                </>
-              )}
+              <p>{cat.provider ? 'Reading your order…' : 'Reading receipt…'}</p>
+              <div className="scanning__bar">
+                <div
+                  className="scanning__barfill"
+                  style={{ width: `${Math.round(progress * 100)}%` }}
+                />
+              </div>
+              <span className="scanning__hint">
+                Recognising text with OCR · {Math.round(progress * 100)}%
+              </span>
             </div>
           )}
 
@@ -285,45 +261,89 @@ export default function BillModal({ members, onClose, onPost, initial = null, ai
   );
 }
 
-function UploadStage({ category, useAI, onPick, inputRef, onFile }) {
+function UploadStage({ category, onPick, inputRef, onFile, onPasteText }) {
   const [dragOver, setDragOver] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const [text, setText] = useState('');
   const isOrder = !!category?.provider;
+
+  if (pasting) {
+    return (
+      <div className="paste">
+        <p className="paste__title">Paste the {isOrder ? `${category.label} order` : 'bill'} text</p>
+        <p className="paste__hint">
+          Copy the item list from the app or the order/confirmation email and paste it
+          here — this reads it exactly, with no OCR guessing.
+        </p>
+        <textarea
+          className="input paste__box"
+          rows={9}
+          placeholder={"e.g.\nAmul Gold Milk 500ml  ₹35\nAashirvaad Atta 5kg  ₹289\nGrand total  ₹386"}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          autoFocus
+        />
+        <div className="paste__actions">
+          <button className="btn btn--ghost" onClick={() => setPasting(false)}>
+            Back
+          </button>
+          <button
+            className="btn btn--primary"
+            disabled={!text.trim()}
+            onClick={() => onPasteText(text)}
+          >
+            Read text
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`dropzone ${dragOver ? 'dropzone--over' : ''}`}
-      onClick={onPick}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        onFile(e.dataTransfer.files?.[0]);
-      }}
-    >
-      <div className="dropzone__icon">{isOrder ? category.icon : '🧾'}</div>
-      <p className="dropzone__title">
-        {isOrder
-          ? `Forward your ${category.label} order screenshot`
-          : 'Upload a photo of the bill'}
-      </p>
-      <p className="dropzone__hint">Tap to choose an image, or drag &amp; drop it here</p>
-      <span className="dropzone__ocr">
-        {useAI
-          ? '✨ AI reading is on — Claude will read this image'
-          : isOrder
-            ? `We'll read your ${category.label} order with OCR`
-            : "We'll read the items automatically with OCR"}
-      </span>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(e) => onFile(e.target.files?.[0])}
-      />
+    <div>
+      <div
+        className={`dropzone ${dragOver ? 'dropzone--over' : ''}`}
+        onClick={onPick}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          onFile(e.dataTransfer.files?.[0]);
+        }}
+      >
+        <div className="dropzone__icon">{isOrder ? category.icon : '🧾'}</div>
+        <p className="dropzone__title">
+          {isOrder
+            ? `Forward your ${category.label} order screenshot`
+            : 'Upload a photo of the bill'}
+        </p>
+        <p className="dropzone__hint">Tap to choose an image, or drag &amp; drop it here</p>
+        <span className="dropzone__ocr">
+          {isOrder
+            ? `We'll read your ${category.label} order on-device (OCR)`
+            : "We'll read the items on-device (OCR)"}
+        </span>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={(e) => onFile(e.target.files?.[0])}
+        />
+      </div>
+      <button
+        className="paste__link"
+        onClick={(e) => {
+          e.stopPropagation();
+          setPasting(true);
+        }}
+      >
+        📋 Or paste the order text instead (most reliable)
+      </button>
     </div>
   );
 }

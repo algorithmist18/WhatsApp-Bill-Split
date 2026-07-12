@@ -261,11 +261,40 @@ export function guessMerchant(text) {
   return 'Receipt';
 }
 
-// Decode the file, downscale large phone photos, and grayscale it onto a canvas.
-// This is the key to reading real JPEGs reliably: Tesseract chokes on huge,
-// full-colour images, so we hand it clean, right-sized pixels instead of the
-// raw File. Falls back to the original file if canvas isn't available.
-async function fileToImageSource(file, maxDim = 1800) {
+// Otsu's method: pick the grayscale threshold that best separates text from
+// background by maximising between-class variance over the histogram.
+function otsuThreshold(hist, total) {
+  let sum = 0;
+  for (let i = 0; i < 256; i += 1) sum += i * hist[i];
+  let sumB = 0;
+  let wB = 0;
+  let best = 0;
+  let threshold = 127;
+  for (let t = 0; t < 256; t += 1) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best) {
+      best = between;
+      threshold = t;
+    }
+  }
+  return threshold;
+}
+
+// Prepare an image for OCR entirely on-device (no network, no API):
+//   1. Scale so the text is a comfortable size — upscale small screenshots,
+//      downscale huge photos — since Tesseract reads best around ~1500–2200px.
+//   2. Grayscale.
+//   3. Binarize with an Otsu threshold so the text is crisp black-on-white,
+//      which is what the OCR engine handles best.
+// Falls back to the raw file if canvas isn't available.
+async function fileToImageSource(file, { minDim = 1500, maxDim = 2600 } = {}) {
   if (typeof document === 'undefined') return file;
   const url = URL.createObjectURL(file);
   try {
@@ -276,7 +305,11 @@ async function fileToImageSource(file, maxDim = 1800) {
       el.src = url;
     });
     const longest = Math.max(img.naturalWidth, img.naturalHeight) || 1;
-    const scale = Math.min(1, maxDim / longest);
+    // Upscale small images (toward minDim) and downscale oversized ones (to
+    // maxDim); leave mid-size images alone.
+    let scale = 1;
+    if (longest < minDim) scale = minDim / longest;
+    else if (longest > maxDim) scale = maxDim / longest;
     const w = Math.max(1, Math.round(img.naturalWidth * scale));
     const h = Math.max(1, Math.round(img.naturalHeight * scale));
 
@@ -284,14 +317,28 @@ async function fileToImageSource(file, maxDim = 1800) {
     canvas.width = w;
     canvas.height = h;
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, 0, 0, w, h);
 
-    // Grayscale — reduces colour noise so the text stands out for OCR.
+    // Grayscale + build a histogram for thresholding.
     const data = ctx.getImageData(0, 0, w, h);
     const p = data.data;
+    const hist = new Array(256).fill(0);
     for (let i = 0; i < p.length; i += 4) {
-      const g = p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114;
+      const g = (p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114) | 0;
       p[i] = p[i + 1] = p[i + 2] = g;
+      hist[g] += 1;
+    }
+
+    // Binarize. If the threshold lands in a corner (near-blank image), keep the
+    // grayscale version instead of producing an all-black/all-white canvas.
+    const t = otsuThreshold(hist, w * h);
+    if (t > 8 && t < 247) {
+      for (let i = 0; i < p.length; i += 4) {
+        const v = p[i] > t ? 255 : 0;
+        p[i] = p[i + 1] = p[i + 2] = v;
+      }
     }
     ctx.putImageData(data, 0, 0);
     return canvas;

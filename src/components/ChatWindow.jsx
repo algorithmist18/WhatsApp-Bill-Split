@@ -8,7 +8,6 @@ export default function ChatWindow({
   membersById,
   onOpenMembers,
   onOpenSettle,
-  onOpenSettings,
   onAddBill,
   onEditBill,
   onSendText,
@@ -47,14 +46,6 @@ export default function ChatWindow({
         </div>
         <button className="chat__settle" onClick={onOpenSettle}>
           ⚖️ Settle up
-        </button>
-        <button
-          className="chat__gear"
-          onClick={onOpenSettings}
-          title="Reading settings"
-          aria-label="Reading settings"
-        >
-          ⚙️
         </button>
       </header>
 
