@@ -36,14 +36,13 @@ export function createRecognizer({ onResult, onError, onEnd }) {
   return rec;
 }
 
-// Phrases that mean "share this across the WHOLE group". Deliberately narrow:
-// words like "share"/"together" only mean the *named* people share an item, so
-// they must NOT trigger a group-wide split.
+// Words that mean "share this across the WHOLE group".
 const ALL_RE =
-  /\b(everyone|everybody|every ?one|all of us|whole group|entire group|the group|\ball\b)\b/;
+  /\b(everyone|everybody|every ?one|all of us|whole group|entire group|the group|together|\ball\b|\bus\b)\b/g;
 
-// First-person words map to the member literally named "You" (the phone owner).
-const SELF_RE = /\b(me|my|mine|i|myself|i'?ll|i'?m)\b/;
+// First-person words map to the member literally named "You" (the phone owner):
+// "for me", "I had it", "mine", "split by me" all select You.
+const SELF_RE = /\b(me|my|mine|myself|i|i'?m|i'?ll|i'?ve)\b/g;
 
 // Filler words that appear inside item names but shouldn't be used to match.
 const STOP = new Set([
@@ -70,68 +69,98 @@ function itemKeywords(item) {
   return words.sort((a, b) => b.length - a.length);
 }
 
-// Members mentioned in a clause. Uses word boundaries so "Sam" doesn't also
-// match "Sameer", and maps first-person words to the "You" member.
-function membersInClause(clause, members) {
-  const found = [];
-  for (const m of members) {
-    const fn = escapeRe(firstName(m));
-    if (new RegExp(`\\b${fn}\\b`).test(clause)) found.push(m);
+// Earliest index where an item is mentioned (by full name or a keyword), or -1.
+function itemMentionIndex(text, item) {
+  let best = -1;
+  const name = item.name.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (name.length >= 3) {
+    const i = text.indexOf(name);
+    if (i >= 0) best = i;
   }
-  if (SELF_RE.test(clause)) {
-    const self = members.find((m) => m.name.trim().toLowerCase() === 'you');
-    if (self && !found.includes(self)) found.push(self);
+  for (const k of itemKeywords(item)) {
+    const m = text.match(new RegExp(`\\b${escapeRe(k)}\\b`));
+    if (m && (best < 0 || m.index < best)) best = m.index;
   }
-  return found;
+  return best;
 }
 
-// Items mentioned in a clause (by full name or any identifying keyword).
-function itemsInClause(clause, items) {
-  return items.filter((it) => {
-    const name = it.name.toLowerCase().trim();
-    if (name && clause.includes(name)) return true;
-    return itemKeywords(it).some((k) => new RegExp(`\\b${escapeRe(k)}\\b`).test(clause));
-  });
+// All start indices where a word-boundary regex matches.
+function allIndices(text, source) {
+  const re = new RegExp(source, 'g');
+  const out = [];
+  let m;
+  while ((m = re.exec(text))) {
+    out.push(m.index);
+    if (m.index === re.lastIndex) re.lastIndex += 1; // avoid zero-width loop
+  }
+  return out;
 }
 
 // Maps a spoken transcript onto the line items.
 //
-// Each comma / "then" / "also" separated clause is one instruction: the items
-// it names go to the people it names. "everyone" (with no specific names) shares
-// across the whole group. Items named with nobody are left unassigned (they fall
-// back to an even split at settle time).
+// Speech has no punctuation, so a whole sentence arrives as one string. We scan
+// it left-to-right: naming an item makes it the "current" item, and any people
+// named after it attach to THAT item — so "biryani for Rahul and pizza for
+// Priya" assigns each item to only its own person. People named before the first
+// item attach to the first item that follows ("Rahul and I share the pizza").
 //
 // Returns { items: updatedItems, log: humanReadableAssignments }.
 export function parseAssignments(transcript, items, members) {
-  const clean = ` ${transcript.toLowerCase().replace(/&/g, ' and ')} `;
-  const clauses = clean
-    .split(/[,;.]|\bthen\b|\balso\b|\bplus\b|\bnext\b/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const text = ` ${transcript.toLowerCase().replace(/&/g, ' and ')} `;
+  const self = members.find((m) => m.name.trim().toLowerCase() === 'you');
 
-  const result = items.map((it) => ({ ...it, assignedTo: [...(it.assignedTo || [])] }));
-  const log = [];
+  // Build a timeline of events (item / people / everyone) ordered by position.
+  const events = [];
+  for (const it of items) {
+    const idx = itemMentionIndex(text, it);
+    if (idx >= 0) events.push({ index: idx, kind: 'item', id: it.id });
+  }
+  for (const m of members) {
+    const re = `\\b${escapeRe(firstName(m))}\\b`;
+    for (const idx of allIndices(text, re)) {
+      events.push({ index: idx, kind: 'people', ids: [m.id] });
+    }
+  }
+  if (self) {
+    for (const idx of allIndices(text, SELF_RE.source)) {
+      events.push({ index: idx, kind: 'people', ids: [self.id] });
+    }
+  }
+  for (const idx of allIndices(text, ALL_RE.source)) {
+    events.push({ index: idx, kind: 'all' });
+  }
+  events.sort((a, b) => a.index - b.index);
 
-  for (const raw of clauses) {
-    const clause = ` ${raw} `;
-    const mentionedItems = itemsInClause(clause, result);
-    if (mentionedItems.length === 0) continue;
-
-    const mentionedMembers = membersInClause(clause, members);
-    const wantsAll = mentionedMembers.length === 0 && ALL_RE.test(clause);
-
-    let targets;
-    if (mentionedMembers.length > 0) targets = mentionedMembers;
-    else if (wantsAll) targets = members;
-    else continue; // item named but no people — leave it unassigned
-
-    for (const it of mentionedItems) {
-      it.assignedTo = targets.map((m) => m.id);
-      log.push(
-        `${it.name} → ${targets.map((m) => m.name.split(' ')[0]).join(', ')}`
-      );
+  // Walk the timeline, attaching people to the most-recently-named item.
+  const assigned = {}; // itemId -> Set(memberId)
+  let current = null;
+  let pending = []; // people named before any item yet
+  for (const ev of events) {
+    if (ev.kind === 'item') {
+      current = ev.id;
+      if (!assigned[current]) assigned[current] = new Set();
+      pending.forEach((id) => assigned[current].add(id));
+      pending = [];
+    } else {
+      const ids = ev.kind === 'all' ? members.map((m) => m.id) : ev.ids;
+      if (current) ids.forEach((id) => assigned[current].add(id));
+      else pending.push(...ids);
     }
   }
 
+  // Apply. Only items that were mentioned AND got at least one person are
+  // changed; everything else keeps its existing assignment.
+  const byId = Object.fromEntries(members.map((m) => [m.id, m]));
+  const result = items.map((it) => ({ ...it, assignedTo: [...(it.assignedTo || [])] }));
+  const log = [];
+  for (const it of result) {
+    const set = assigned[it.id];
+    if (set && set.size > 0) {
+      it.assignedTo = [...set];
+      log.push(
+        `${it.name} → ${it.assignedTo.map((id) => byId[id]?.name.split(' ')[0] || '?').join(', ')}`
+      );
+    }
+  }
   return { items: result, log };
 }
