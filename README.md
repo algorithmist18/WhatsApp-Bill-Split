@@ -13,13 +13,22 @@ it automatically, see clearly **who owes whom how much**, and settle up over
    with a name and a UPI id (`name@bank`). Tap the group header to manage them.
 2. **Add an expense** — hit 📎 / **Split a bill** and pick a category:
    🍽️ Restaurant, 🛒 Blinkit, 🏪 Instamart, 📦 Amazon, 🚕 Taxi, 🏠 Rent,
-   🛍️ E-commerce, or ➕ Other. **Restaurant** reads a receipt photo with **real
-   OCR** (Tesseract.js); **Blinkit / Instamart / Amazon** let you **forward an
-   order screenshot** and use provider-tuned parsing (their line-item and
-   "grand total" formats, with delivery/handling/taxes reconciled into a single
-   line so the split still matches what you were charged). Other categories jump
-   to a quick amount/items form. The category icon shows on the posted card, and
-   any bill can be **edited** later from the card.
+   🛍️ E-commerce, or ➕ Other. For image categories you can **read the bill two
+   ways**:
+   - **AI reading (recommended)** — with an Anthropic API key set (⚙️ → *Read
+     bills with AI*), the uploaded receipt/order screenshot is read by **Claude
+     vision** (`claude-opus-4-8`), which handles messy app screenshots (struck
+     MRPs, free items, odd layouts) far better than OCR and returns clean items.
+   - **On-device OCR (fallback)** — with no key, **Tesseract.js** runs locally
+     (self-hosted, no CDN) with provider-tuned parsing for Blinkit / Instamart /
+     Amazon order screenshots.
+
+   Other categories jump to a quick amount/items form. The category icon shows on
+   the posted card, and any bill can be **edited** later from the card.
+
+   > The API key is stored only in your browser (localStorage) and used to call
+   > Anthropic directly from your device — fine for a personal prototype on your
+   > own machine; don't ship the app with a key baked in.
 3. **Split it** — three ways:
    - **Equally** across the whole group,
    - **Assign items** — tap chips per item, or use **🎤 voice**: say something
@@ -101,8 +110,10 @@ src/
     UpiModal.jsx          UPI deep link + QR
     SettleUpModal.jsx     group balances + minimal payments + activity log
     DisputeModal.jsx      raise a dispute on a bill (who + reason)
+    SettingsModal.jsx     AI reading toggle + Anthropic API key
   lib/
-    ocr.js                Tesseract.js OCR + receipt parsing
+    aiVision.js           Claude vision bill reading (Anthropic SDK)
+    ocr.js                Tesseract.js OCR + receipt parsing (fallback)
     categories.js         expense categories (restaurant/taxi/rent/…)
     split.js              per-bill share + debt calculation
     balances.js           group balances + minimum-cash-flow settle-up

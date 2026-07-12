@@ -6,6 +6,7 @@ import BillModal from './components/BillModal.jsx';
 import UpiModal from './components/UpiModal.jsx';
 import SettleUpModal from './components/SettleUpModal.jsx';
 import DisputeModal from './components/DisputeModal.jsx';
+import SettingsModal from './components/SettingsModal.jsx';
 import { answer } from './lib/assistant.js';
 
 const STORAGE_KEY = 'splitchat.state.v2';
@@ -31,6 +32,7 @@ function defaultState() {
       },
     ],
     settlements: [],
+    settings: { aiEnabled: true, anthropicKey: '' },
   };
 }
 
@@ -39,7 +41,11 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { settlements: [], ...parsed };
+      return {
+        settlements: [],
+        ...parsed,
+        settings: { aiEnabled: true, anthropicKey: '', ...(parsed.settings || {}) },
+      };
     }
   } catch {
     /* ignore corrupt storage */
@@ -55,6 +61,7 @@ export default function App() {
   const [settleOpen, setSettleOpen] = useState(false);
   const [upiRequest, setUpiRequest] = useState(null);
   const [disputeTarget, setDisputeTarget] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -64,7 +71,7 @@ export default function App() {
     }
   }, [state]);
 
-  const { group, messages, settlements } = state;
+  const { group, messages, settlements, settings } = state;
 
   const membersById = useMemo(
     () => Object.fromEntries(group.members.map((m) => [m.id, m])),
@@ -218,6 +225,7 @@ export default function App() {
         membersById={membersById}
         onOpenMembers={() => setMembersOpen(true)}
         onOpenSettle={() => setSettleOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         onAddBill={openAddBill}
         onEditBill={openEditBill}
         onSendText={handleSendText}
@@ -239,6 +247,7 @@ export default function App() {
         <BillModal
           members={group.members}
           initial={editBill}
+          ai={{ enabled: settings.aiEnabled, key: settings.anthropicKey }}
           onClose={closeBill}
           onPost={(splitMessage, editId) => {
             if (editId) updateMessage(editId, splitMessage);
@@ -261,6 +270,16 @@ export default function App() {
 
       {upiRequest && (
         <UpiModal request={upiRequest} onClose={() => setUpiRequest(null)} />
+      )}
+
+      {settingsOpen && (
+        <SettingsModal
+          settings={settings}
+          onSave={(next) =>
+            setState((s) => ({ ...s, settings: { ...s.settings, ...next } }))
+          }
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
 
       {disputeTarget && (

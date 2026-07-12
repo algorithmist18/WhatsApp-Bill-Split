@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { runOcr, blankItem } from '../lib/ocr.js';
+import { readImageWithAI } from '../lib/aiVision.js';
 import {
   computeShares,
   computeDebts,
@@ -15,8 +16,9 @@ import {
   parseAssignments,
 } from '../lib/voice.js';
 
-export default function BillModal({ members, onClose, onPost, initial = null }) {
+export default function BillModal({ members, onClose, onPost, initial = null, ai = {} }) {
   const isEditing = !!initial;
+  const useAI = !!(ai.enabled && ai.key);
   // New bills start at category selection; editing jumps straight to the edit
   // stage prefilled with the bill's items, split mode and payer.
   const [stage, setStage] = useState(isEditing ? 'edit' : 'category');
@@ -34,6 +36,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   );
   const [progress, setProgress] = useState(0);
   const [ocrNote, setOcrNote] = useState('');
+  const [aiMode, setAiMode] = useState(false);
 
   const cat = getCategory(category);
 
@@ -78,6 +81,33 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
     setStage('scanning');
     setProgress(0);
     setOcrNote('');
+    setAiMode(useAI);
+
+    // Preferred path: Claude vision (accurate on messy app screenshots).
+    if (useAI) {
+      try {
+        const result = await readImageWithAI(file, {
+          apiKey: ai.key,
+          provider: cat.provider,
+          category,
+        });
+        setMerchant(result.merchant || cat.label);
+        if (result.items.length > 0) {
+          setItems(result.items);
+        } else {
+          setItems([blankItem()]);
+          setOcrNote('AI read the image but found no items — add them below.');
+        }
+        setStage('edit');
+        return;
+      } catch (err) {
+        console.warn('AI read failed, falling back to OCR:', err);
+        setOcrNote(`AI read failed (${err?.message || 'error'}). Falling back to OCR…`);
+        setAiMode(false);
+      }
+    }
+
+    // Fallback: on-device OCR.
     try {
       const result = await runOcr(file, { onProgress: setProgress, provider: cat.provider });
       setMerchant(result.merchant);
@@ -91,7 +121,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
       console.warn('OCR failed:', err);
       setMerchant(cat.label);
       setItems([blankItem()]);
-      setOcrNote('OCR failed to run — enter the items manually.');
+      setOcrNote('Reading failed — enter the items manually.');
     }
     setStage('edit');
   }
@@ -169,6 +199,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
           {stage === 'upload' && (
             <UploadStage
               category={cat}
+              useAI={useAI}
               onPick={() => fileInputRef.current?.click()}
               inputRef={fileInputRef}
               onFile={handleFile}
@@ -178,16 +209,25 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
           {stage === 'scanning' && (
             <div className="scanning">
               <div className="scanning__spinner" />
-              <p>{cat.provider ? 'Reading your order…' : 'Reading receipt…'}</p>
-              <div className="scanning__bar">
-                <div
-                  className="scanning__barfill"
-                  style={{ width: `${Math.round(progress * 100)}%` }}
-                />
-              </div>
-              <span className="scanning__hint">
-                Recognising text with OCR · {Math.round(progress * 100)}%
-              </span>
+              {aiMode ? (
+                <>
+                  <p>Reading with AI ✨</p>
+                  <span className="scanning__hint">Claude is reading your image…</span>
+                </>
+              ) : (
+                <>
+                  <p>{cat.provider ? 'Reading your order…' : 'Reading receipt…'}</p>
+                  <div className="scanning__bar">
+                    <div
+                      className="scanning__barfill"
+                      style={{ width: `${Math.round(progress * 100)}%` }}
+                    />
+                  </div>
+                  <span className="scanning__hint">
+                    Recognising text with OCR · {Math.round(progress * 100)}%
+                  </span>
+                </>
+              )}
             </div>
           )}
 
@@ -245,7 +285,7 @@ export default function BillModal({ members, onClose, onPost, initial = null }) 
   );
 }
 
-function UploadStage({ category, onPick, inputRef, onFile }) {
+function UploadStage({ category, useAI, onPick, inputRef, onFile }) {
   const [dragOver, setDragOver] = useState(false);
   const isOrder = !!category?.provider;
   return (
@@ -271,9 +311,11 @@ function UploadStage({ category, onPick, inputRef, onFile }) {
       </p>
       <p className="dropzone__hint">Tap to choose an image, or drag &amp; drop it here</p>
       <span className="dropzone__ocr">
-        {isOrder
-          ? `We'll read your ${category.label} order automatically`
-          : "We'll read the items automatically with OCR"}
+        {useAI
+          ? '✨ AI reading is on — Claude will read this image'
+          : isOrder
+            ? `We'll read your ${category.label} order with OCR`
+            : "We'll read the items automatically with OCR"}
       </span>
       <input
         ref={inputRef}
