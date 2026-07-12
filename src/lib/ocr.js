@@ -89,11 +89,23 @@ const PROVIDER_SKIP = {
     /\b(delivery|shipping|order total|grand total|sold by|qty|quantity|gst|cess|you saved|savings?|subtotal|mrp|deal|promotion|coupon|packaging)\b/i,
 };
 
-const PROVIDER_TOTAL = {
-  blinkit: /\b(?:grand total|bill total|to pay|total\s*bill)\b\D*([\d,]+(?:\.\d{2})?)/i,
-  instamart: /\b(?:grand total|to pay|total)\b\D*([\d,]+(?:\.\d{2})?)/i,
-  amazon: /\b(?:order total|grand total)\b\D*([\d,]+(?:\.\d{2})?)/i,
-};
+// One money token, optionally currency-prefixed: "₹377", "1,250.50", "0".
+const AMOUNT = /(?:₹|rs\.?|inr|\$)?\s*(\d[\d,]*(?:[.,]\d{2})?)/gi;
+
+// A trailing run of 1–3 money tokens at the end of a line. Captures both a
+// price cell on its own ("₹499 ₹377") and a "Name … ₹499 ₹377" line, so we can
+// split the name from the price region.
+const TRAIL_PRICE =
+  /((?:(?:₹|rs\.?|inr|\$)\s*)?\d[\d,]*(?:[.,]\d{2})?(?:\s+(?:(?:₹|rs\.?|inr|\$)\s*)?\d[\d,]*(?:[.,]\d{2})?){0,2})\s*$/i;
+
+// A quantity / unit line that sits between an item name and its price in app
+// screenshots, e.g. "500 ml", "1 unit", "2 x", "250 g", "1 pc x 1".
+const QTY_LINE =
+  /^\s*(?:qty\.?\s*)?\d+\s*(?:x|×|unit|units|pcs?|pieces?|nos?|ml|l|ltr|litre|g|gm|gms|kg|pack|packs?|combo|sachet)\b/i;
+
+// Keywords that mark the order's grand total (not item/sub totals).
+const TOTAL_LINE = /\b(grand total|bill total|order total|total amount|amount payable|to pay|net payable|total)\b/i;
+const NOT_TOTAL = /\b(item|sub|mrp|saved|saving)\b/i;
 
 // Strip a leading quantity like "2 x ", "2x", "3 X" or "Qty 2" from an item name.
 function stripQty(name) {
@@ -103,15 +115,68 @@ function stripQty(name) {
     .trim();
 }
 
-function detectOrderTotal(text, provider) {
-  const re = PROVIDER_TOTAL[provider];
-  if (!re) return null;
-  const m = text.match(re);
-  if (!m) return null;
-  const val = toNumber(m[1]);
-  return isFinite(val) && val > 0 ? round2(val) : null;
+function cleanName(raw) {
+  return stripQty(raw.replace(/[.:_·—-]+$/, '').replace(/\s{2,}/g, ' ').trim());
 }
 
+function validName(name) {
+  return name && name.replace(/[^a-z]/gi, '').length >= 2;
+}
+
+function validPrice(price) {
+  return isFinite(price) && price > 0 && price <= 100000;
+}
+
+// Collect the money tokens in a string with whether each had a currency symbol
+// or decimals (a strong signal it's really a price, not a stray number).
+function amountsIn(str) {
+  const out = [];
+  let m;
+  AMOUNT.lastIndex = 0;
+  while ((m = AMOUNT.exec(str))) {
+    out.push({ value: toNumber(m[1]), currency: /₹|rs|inr|\$/i.test(m[0]), dec: /[.,]\d{2}$/.test(m[1]) });
+  }
+  return out;
+}
+
+// Split a line into { name, price, strong } using its trailing price region.
+// price is the LAST amount (the actual charged price when a struck-through MRP
+// precedes it). `strong` is true when the region clearly reads as money.
+function analyzePrice(line) {
+  const m = line.match(TRAIL_PRICE);
+  if (!m) return null;
+  const region = m[1];
+  const name = line.slice(0, line.length - m[0].length).trim();
+  const amts = amountsIn(region);
+  if (amts.length === 0) return null;
+  const price = amts[amts.length - 1].value;
+  const strong = amts.length >= 2 || amts.some((a) => a.currency || a.dec);
+  return { name, price, strong };
+}
+
+// Find the order's grand total. App screenshots often put the amount on the
+// line after the "Grand total" label, so we scan same-line then the next two
+// lines, and keep the largest total-ish amount we see.
+function detectOrderTotal(lines) {
+  let best = null;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!TOTAL_LINE.test(lines[i]) || NOT_TOTAL.test(lines[i])) continue;
+    let amt = null;
+    for (let j = 0; j <= 2 && i + j < lines.length; j += 1) {
+      const info = analyzePrice(lines[i + j]);
+      if (info && (j === 0 || !validName(info.name))) {
+        amt = info.price;
+        break;
+      }
+    }
+    if (amt !== null && validPrice(amt) && (best === null || amt > best)) best = round2(amt);
+  }
+  return best;
+}
+
+// Parse a forwarded order screenshot. Handles "Name … ₹MRP ₹price" on one line
+// and the common app layout where the name, quantity and price cell land on
+// separate OCR lines (taking the actual price, not the struck-through MRP).
 export function parseOrder(text, provider) {
   const skip = PROVIDER_SKIP[provider];
   const lines = text
@@ -120,35 +185,69 @@ export function parseOrder(text, provider) {
     .filter(Boolean);
 
   const items = [];
-  for (const line of lines) {
-    if (SKIP_RE.test(line) || (skip && skip.test(line))) continue;
-    const m = line.match(PRICE_STRICT) || line.match(PRICE_LOOSE);
-    if (!m) continue;
-    const name = stripQty(m[1].replace(/[.:_·—-]+$/, '').replace(/\s{2,}/g, ' ').trim());
-    const price = toNumber(m[2]);
-    if (!name || name.replace(/[^a-z]/gi, '').length < 2) continue;
-    if (!isFinite(price) || price <= 0 || price > 100000) continue;
+  let pendingName = null; // an item name still waiting for its price
+  let skipNextPrice = false; // a fee/total line just passed — ignore its amount
+
+  const push = (name, price) => {
     items.push({ id: makeId(), name: titleCase(name), price, assignedTo: [] });
+  };
+
+  for (const line of lines) {
+    const isSkip = SKIP_RE.test(line) || (skip && skip.test(line));
+    const info = analyzePrice(line);
+
+    // A fee / total label line — drop any pending name and swallow the amount
+    // that follows it (whether inline or on the next line).
+    if (isSkip) {
+      pendingName = null;
+      skipNextPrice = true;
+      continue;
+    }
+
+    if (info) {
+      const hasName = validName(info.name);
+      if (hasName && info.strong) {
+        // "Name … ₹MRP ₹price" on one line.
+        push(cleanName(info.name), info.price);
+        pendingName = null;
+        skipNextPrice = false;
+        continue;
+      }
+      if (!hasName) {
+        // A standalone price cell — belongs to the pending item.
+        if (skipNextPrice) {
+          skipNextPrice = false;
+          pendingName = null;
+        } else if (pendingName && info.price >= 0 && info.price <= 100000) {
+          push(pendingName, round2(info.price));
+          pendingName = null;
+        }
+        continue;
+      }
+      // hasName but weak trailing number (a bare quantity in the name) — fall
+      // through and treat the whole line as a name.
+    }
+
+    // A quantity/unit line — keep the pending name, skip.
+    if (QTY_LINE.test(line)) continue;
+
+    // Otherwise it's an item name. A fresh name means a new item, so a stale
+    // "skip the next price" no longer applies.
+    const nm = cleanName(line);
+    if (validName(nm)) {
+      pendingName = nm;
+      skipNextPrice = false;
+    }
   }
 
   // Reconcile to the order total so delivery/handling/taxes aren't lost.
-  const orderTotal = detectOrderTotal(text, provider);
+  const orderTotal = detectOrderTotal(lines);
   const sum = round2(items.reduce((s, it) => s + it.price, 0));
   if (orderTotal) {
     if (items.length === 0) {
-      items.push({
-        id: makeId(),
-        name: `${PROVIDER_NAME[provider] || 'Order'} order`,
-        price: orderTotal,
-        assignedTo: [],
-      });
+      push(`${PROVIDER_NAME[provider] || 'Order'} order`, orderTotal);
     } else if (orderTotal - sum > 1) {
-      items.push({
-        id: makeId(),
-        name: 'Taxes & delivery',
-        price: round2(orderTotal - sum),
-        assignedTo: [],
-      });
+      push('Taxes & delivery', round2(orderTotal - sum));
     }
   }
   return items;
