@@ -12,8 +12,25 @@ function modeLabel(mode) {
   return 'Split equally';
 }
 
+// The "You" member — the phone owner. Only they can actually pay a debt.
+function selfMemberId(membersById) {
+  return Object.values(membersById).find(
+    (m) => m?.name?.trim().toLowerCase() === 'you'
+  )?.id;
+}
+
 // A rich "bill split" card posted into the chat.
-function SplitCard({ message, membersById, onPay, onSettled, onEdit, onDispute, onResolveDispute }) {
+function SplitCard({
+  message,
+  membersById,
+  selfId,
+  onPay,
+  onSettled,
+  onEdit,
+  onDispute,
+  onResolveDispute,
+  onRemind,
+}) {
   const [showItems, setShowItems] = useState(false);
   const payer = membersById[message.payerId];
   const cat = getCategory(message.category);
@@ -106,7 +123,8 @@ function SplitCard({ message, membersById, onPay, onSettled, onEdit, onDispute, 
               </div>
               {debt.settled ? (
                 <span className="debt__done">✓ Paid</span>
-              ) : (
+              ) : !selfId || debt.from === selfId ? (
+                // Only I can pay a debt I owe.
                 <div className="debt__actions">
                   <button
                     className="btn btn--pay"
@@ -121,6 +139,23 @@ function SplitCard({ message, membersById, onPay, onSettled, onEdit, onDispute, 
                     }
                   >
                     Pay via UPI
+                  </button>
+                </div>
+              ) : (
+                // Someone else owes — nudge them with a soft mention instead.
+                <div className="debt__actions">
+                  <button
+                    className="btn btn--remind"
+                    onClick={() =>
+                      onRemind?.({
+                        from: debt.from,
+                        to: debt.to,
+                        amount: debt.amount,
+                        note: message.merchant || 'the bill',
+                      })
+                    }
+                  >
+                    🔔 Remind
                   </button>
                 </div>
               )}
@@ -140,7 +175,23 @@ export default function MessageBubble({
   onEdit,
   onDispute,
   onResolveDispute,
+  onRemind,
 }) {
+  if (message.type === 'mention') {
+    const who = membersById[message.toId];
+    return (
+      <div className="bubblerow bubblerow--in">
+        <div className="bubble bubble--in bubble--mention">
+          <span className="bubble__text">
+            🔔 <span className="mention__tag">@{who ? who.name.split(' ')[0] : 'someone'}</span>{' '}
+            {message.text}
+          </span>
+          <span className="bubble__time">{timeOf(message.ts)}</span>
+        </div>
+      </div>
+    );
+  }
+
   if (message.type === 'text') {
     const isSystem = message.author === 'system';
     const isMine = message.author === 'you';
@@ -188,11 +239,13 @@ export default function MessageBubble({
           <SplitCard
             message={message}
             membersById={membersById}
+            selfId={selfMemberId(membersById)}
             onPay={onPay}
             onSettled={onSettled}
             onEdit={onEdit}
             onDispute={onDispute}
             onResolveDispute={onResolveDispute}
+            onRemind={onRemind}
           />
           <span className="bubble__time">{timeOf(message.ts)}</span>
         </div>

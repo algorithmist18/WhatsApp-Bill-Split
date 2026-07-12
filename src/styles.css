@@ -563,6 +563,27 @@ button {
   border-color: #c0392b;
   color: #fff;
 }
+.btn--remind {
+  background: #fff;
+  border: 1px solid var(--wa-border);
+  color: #b26a00;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.btn--remind:hover {
+  background: #fff8ec;
+  border-color: #f0d9a8;
+}
+
+/* Soft @mention reminder bubble */
+.bubble--mention {
+  background: #fff8ec;
+  border: 1px solid #f0d9a8;
+}
+.mention__tag {
+  color: var(--wa-green-dark);
+  font-weight: 700;
+}
 .btn--danger:disabled {
   opacity: 0.5;
   cursor: not-allowed;

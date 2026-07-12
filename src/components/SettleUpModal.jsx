@@ -17,8 +17,10 @@ export default function SettleUpModal({
   members,
   messages,
   settlements,
+  selfId,
   onPay,
   onSettle,
+  onRemind,
   onClose,
 }) {
   const membersById = useMemo(
@@ -86,29 +88,42 @@ export default function SettleUpModal({
                       <span className="settlelist__amt">{inr(t.amount)}</span>
                     </div>
                     <div className="settlelist__actions">
-                      <button
-                        className="btn btn--pay"
-                        onClick={() =>
-                          onPay({
-                            payee: to,
-                            payer: from,
-                            amount: t.amount,
-                            note: 'Group settle-up',
-                            onPaid: () =>
-                              onSettle({ from: t.from, to: t.to, amount: t.amount }),
-                          })
-                        }
-                      >
-                        Pay via UPI
-                      </button>
-                      <button
-                        className="btn btn--ghost btn--sm"
-                        onClick={() =>
-                          onSettle({ from: t.from, to: t.to, amount: t.amount })
-                        }
-                      >
-                        Mark paid
-                      </button>
+                      {!selfId || t.from === selfId ? (
+                        <>
+                          <button
+                            className="btn btn--pay"
+                            onClick={() =>
+                              onPay({
+                                payee: to,
+                                payer: from,
+                                amount: t.amount,
+                                note: 'Group settle-up',
+                                onPaid: () =>
+                                  onSettle({ from: t.from, to: t.to, amount: t.amount }),
+                              })
+                            }
+                          >
+                            Pay via UPI
+                          </button>
+                          <button
+                            className="btn btn--ghost btn--sm"
+                            onClick={() =>
+                              onSettle({ from: t.from, to: t.to, amount: t.amount })
+                            }
+                          >
+                            Mark paid
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn btn--remind"
+                          onClick={() =>
+                            onRemind?.({ from: t.from, to: t.to, amount: t.amount })
+                          }
+                        >
+                          🔔 Remind
+                        </button>
+                      )}
                     </div>
                   </li>
                 );

@@ -7,6 +7,7 @@ import UpiModal from './components/UpiModal.jsx';
 import SettleUpModal from './components/SettleUpModal.jsx';
 import DisputeModal from './components/DisputeModal.jsx';
 import { answer } from './lib/assistant.js';
+import { inr } from './lib/format.js';
 
 const STORAGE_KEY = 'splitchat.state.v2';
 
@@ -71,8 +72,27 @@ export default function App() {
     [group.members]
   );
 
+  // The phone owner ("You") — only they can pay a debt they owe.
+  const selfId = useMemo(
+    () => group.members.find((m) => m.name.trim().toLowerCase() === 'you')?.id,
+    [group.members]
+  );
+
   function setMembers(members) {
     setState((s) => ({ ...s, group: { ...s.group, members } }));
+  }
+
+  // Post a soft @mention nudging whoever owes to settle up.
+  function remind({ from, to, amount, note }) {
+    const toName = membersById[to]?.name.split(' ')[0] || 'someone';
+    sendMessage({
+      type: 'mention',
+      author: 'system',
+      toId: from,
+      text: `gentle reminder — you owe ${toName} ${inr(amount)}${
+        note ? ` for ${note}` : ''
+      }. Tap Pay via UPI to settle up 🙂`,
+    });
   }
 
   function sendMessage(msg) {
@@ -225,6 +245,7 @@ export default function App() {
         onSettled={markSettled}
         onDispute={(message) => setDisputeTarget(message)}
         onResolveDispute={resolveDispute}
+        onRemind={remind}
       />
 
       {membersOpen && (
@@ -253,8 +274,10 @@ export default function App() {
           members={group.members}
           messages={messages}
           settlements={settlements}
+          selfId={selfId}
           onPay={(req) => setUpiRequest(req)}
           onSettle={addSettlement}
+          onRemind={remind}
           onClose={() => setSettleOpen(false)}
         />
       )}
